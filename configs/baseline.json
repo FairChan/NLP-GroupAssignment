@@ -1,0 +1,11 @@
+{
+  "data_path": "data/raw/train.csv",
+  "output_dir": "artifacts/baseline",
+  "valid_size": 0.1,
+  "seed": 42,
+  "word_ngram_range": [1, 2],
+  "char_ngram_range": [3, 5],
+  "max_word_features": 20000,
+  "max_char_features": 20000,
+  "classifier": "OneVsRest LogisticRegression(class_weight='balanced')"
+}

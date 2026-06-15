@@ -1,0 +1,23 @@
+{
+  "data_path": "data/raw/train.csv",
+  "output_dir": "artifacts/distilbert",
+  "model_name": "distilbert-base-uncased",
+  "labels": ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"],
+  "max_length": 256,
+  "head_tokens": 200,
+  "tail_tokens": 50,
+  "batch_size": 8,
+  "eval_batch_size": 16,
+  "gradient_accumulation_steps": 2,
+  "epochs": 3,
+  "lr": 0.00002,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.06,
+  "loss": "asl",
+  "asymmetric_loss": {
+    "gamma_pos": 0.0,
+    "gamma_neg": 4.0,
+    "clip": 0.05
+  },
+  "fp16": true
+}

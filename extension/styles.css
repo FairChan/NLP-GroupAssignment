@@ -1,0 +1,59 @@
+.toxic-detector-review {
+  outline: 2px solid #f5b942 !important;
+  outline-offset: 2px !important;
+  background-color: rgba(245, 185, 66, 0.08) !important;
+}
+
+.toxic-detector-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin: 0 0 6px 0;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #2f2f2f;
+  color: #ffffff;
+  font: 600 11px/1.3 Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.toxic-detector-wrapper {
+  position: relative;
+  display: block;
+}
+
+.toxic-detector-blurred {
+  filter: blur(5px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.toxic-detector-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid #ce3b3b;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #222222;
+  font: 13px/1.35 Arial, sans-serif;
+  text-align: center;
+}
+
+.toxic-detector-overlay button {
+  border: 1px solid #555555;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #222222;
+  cursor: pointer;
+  font: 600 12px/1.2 Arial, sans-serif;
+  padding: 5px 8px;
+}
