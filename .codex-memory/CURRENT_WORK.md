@@ -418,3 +418,44 @@ Risks:
 
 Next:
 - Keep artifacts/distilbert as default model; next experiment should try capped BCE pos_weight or ASL gamma_neg=4.5 for long-tail labels.
+
+
+## Added popup scan progress and non-blocking status
+
+Actor: codex
+Thread: extension-popup-progress
+Purpose: work
+
+Summary:
+- Added popup scan progress and non-blocking status
+
+Details:
+  Implemented non-blocking popup status for the offline toxic-comment extension. `toxicShield:getQuickStatus` returns cached model/stats/progress without creating offscreen inference. Offscreen inference now sends progress stages for model loading and ONNX batches. Content reports collection and scan counts. Popup renders model/scanner/progress rows and keeps polling quick status while slow work continues.
+
+Files touched:
+- extension/manifest.json
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.html
+- extension/popup.css
+- extension/popup.js
+- extension/README.md
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+
+Tests:
+- node --test extension/tests/*.test.js passed 40 tests
+- node --check extension/supported_sites.js extension/background.js extension/content.js extension/popup.js extension/shared.js extension/tokenizer.js extension/background_helpers.js extension/site_adapters.js extension/offscreen_inference.js passed
+- python -m unittest discover -s tests -v passed 8 tests
+- scripts/verify_extension_model.py passed with max abs diff 0.000005
+- git diff --check passed with only existing Windows LF-to-CRLF warnings
+
+Risks:
+- Must reload unpacked extension version 0.3.1 in Chrome/Edge before verifying. Popup JS cannot control browser-level extension startup delay, only avoid slow work after it starts.
+
+Next:
+- Reload extension and refresh target social page; open popup while comments are scanning to check live progress rows.

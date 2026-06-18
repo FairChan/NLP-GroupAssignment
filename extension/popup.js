@@ -8,14 +8,26 @@ const blockedEl = document.getElementById("blocked");
 const markedEl = document.getElementById("marked");
 const candidatesEl = document.getElementById("candidates");
 const diagnosticEl = document.getElementById("diagnostic");
+const modelProgressEl = document.getElementById("modelProgress");
+const scannerProgressEl = document.getElementById("scannerProgress");
+const runtimeProgressEl = document.getElementById("runtimeProgress");
 
 const CONTENT_STATUS_TIMEOUT_MS = 10000;
 const CONTENT_STATUS_POLL_MS = 250;
-const TRANSIENT_CONTENT_STATUSES = new Set(["starting", "injected", "scheduled", "predicting"]);
+const POPUP_STATUS_POLL_MS = 750;
+const TRANSIENT_CONTENT_STATUSES = new Set(["starting", "injected", "scheduled", "collecting_done", "predicting"]);
+const MODEL_PROGRESS_PHASES = new Set([
+  "configuring_ort",
+  "loading_tokenizer",
+  "loading_model_file",
+  "creating_session",
+  "ready",
+]);
 const POPUP_SUPPORTED_SITES = globalThis.ToxicShieldSupportedSites ?? {};
 const POPUP_IS_SUPPORTED_URL = POPUP_SUPPORTED_SITES.isSupportedUrl || (() => false);
 
 let activeTab = null;
+let statusPollTimer = null;
 
 function sendRuntimeMessage(message) {
   return new Promise((resolve, reject) => {
@@ -67,6 +79,22 @@ function supportedPage(tab) {
   return POPUP_IS_SUPPORTED_URL(tab?.url || "");
 }
 
+function statusRequest(tab, type) {
+  return sendRuntimeMessage({
+    type,
+    tabId: tab?.id,
+    hostname: hostnameForTab(tab),
+  });
+}
+
+function requestQuickStatus(tab) {
+  return statusRequest(tab, "toxicShield:getQuickStatus");
+}
+
+function requestFullStatus(tab) {
+  return statusRequest(tab, "toxicShield:getStatus");
+}
+
 async function ensureContentScript(tab) {
   if (!tab?.id || !supportedPage(tab)) return { ok: false, skipped: "unsupported_page" };
   return sendRuntimeMessage({
@@ -75,6 +103,53 @@ async function ensureContentScript(tab) {
     hostname: hostnameForTab(tab),
     url: tab.url || "",
   });
+}
+
+function progressFromPayload(payload) {
+  return payload?.runtimeProgress || payload?.progress || {};
+}
+
+function formatProgress(progress) {
+  const phase = String(progress?.phase || "idle");
+  const message = String(progress?.message || phase.replace(/_/g, " "));
+  const current = Number(progress?.current || 0);
+  const total = Number(progress?.total || 0);
+  if (total > 0) {
+    return `${message} (${Math.min(current, total)}/${total})`;
+  }
+  return message || "Idle";
+}
+
+function modelProgressText(model, progress) {
+  const phase = String(progress?.phase || "");
+  if (model.status === "ready") return `Ready (${model.backend || "wasm"})`;
+  if (model.status === "error") return `Error: ${model.error || "unknown"}`;
+  if (model.status === "loading" || MODEL_PROGRESS_PHASES.has(phase)) {
+    return progress?.message || "Loading model assets.";
+  }
+  return "Loads on first scan";
+}
+
+function scannerProgressText(payload, contentStatus) {
+  const stats = payload?.stats || {};
+  const status = contentStatus?.status || stats.lastScanStatus || "not_injected";
+  const candidateCount = Number(contentStatus?.candidate_count ?? stats.lastCandidateCount ?? 0);
+  const processedCount = Number(contentStatus?.processed_count ?? stats.lastProcessedCount ?? 0);
+  if (status === "collecting_done") return `Collected ${candidateCount} candidate comment(s).`;
+  if (status === "predicting") return `Predicting ${candidateCount} candidate comment(s).`;
+  if (status === "scanned") return `Processed ${processedCount || candidateCount} candidate comment(s).`;
+  if (status === "scheduled") return "Scan scheduled.";
+  if (status === "no_candidates") return "No visible candidates yet.";
+  if (status === "idle") return "Waiting for new visible comments.";
+  return status.replace(/_/g, " ");
+}
+
+function renderProgress(payload, contentStatus) {
+  const model = payload?.model || {};
+  const progress = progressFromPayload(payload);
+  modelProgressEl.textContent = modelProgressText(model, progress);
+  scannerProgressEl.textContent = scannerProgressText(payload, contentStatus);
+  runtimeProgressEl.textContent = formatProgress(progress);
 }
 
 function diagnosticText(payload, contentStatus, activeTabInfo, injectionError) {
@@ -93,6 +168,7 @@ function diagnosticText(payload, contentStatus, activeTabInfo, injectionError) {
   if (status === "starting") return "Scanner is starting on this page...";
   if (status === "injected") return "Scanner injected. Waiting for the first scan to start...";
   if (status === "scheduled") return "Scanner scheduled. Waiting for visible comment candidates...";
+  if (status === "collecting_done") return `Collected ${candidateCount} candidate comment(s). Waiting for local model inference...`;
   if (status === "adapter_missing") return "Scanner adapter failed to load on this page.";
   if (status === "no_candidates") return "No visible comment candidates found yet. Scroll to the comment area and rescan.";
   if (status === "prediction_error") return `Prediction error: ${contentStatus?.error || stats.lastScanError || "unknown error"}`;
@@ -111,12 +187,15 @@ function renderStatus(payload, contentStatus, activeTabInfo, injectionError) {
       ? `Offline model ready (${model.backend || "wasm"})`
       : model.status === "error"
         ? `Model error: ${model.error}`
-        : "Model loads on first scan";
+        : model.status === "loading"
+          ? "Offline model is loading..."
+          : "Model loads on first scan";
   scannedEl.textContent = String(payload.stats?.scanned || 0);
   blockedEl.textContent = String(payload.stats?.blocked || 0);
   markedEl.textContent = String(payload.stats?.marked || 0);
   candidatesEl.textContent = String(contentStatus?.candidate_count ?? payload.stats?.lastCandidateCount ?? 0);
   diagnosticEl.textContent = diagnosticText(payload, contentStatus, activeTabInfo, injectionError);
+  renderProgress(payload, contentStatus);
 }
 
 function isTransientContentStatus(contentStatus) {
@@ -129,34 +208,47 @@ async function readContentStatus(tab) {
   return response?.content || null;
 }
 
+async function renderQuickStatus() {
+  activeTab = await getActiveTab();
+  const hostname = hostnameForTab(activeTab);
+  siteEl.textContent = hostname || "Unsupported page";
+  const payload = await requestQuickStatus(activeTab);
+  const contentStatus = await readContentStatus(activeTab);
+  renderStatus(payload, contentStatus, activeTab, null);
+  return { payload, contentStatus };
+}
+
+async function refreshCachedStatus() {
+  try {
+    await renderQuickStatus();
+  } catch (error) {
+    diagnosticEl.textContent = error.message;
+  }
+}
+
 async function pollContentStatus(tab, payload, injectionError) {
   const deadline = Date.now() + CONTENT_STATUS_TIMEOUT_MS;
   let latestStatus = await readContentStatus(tab);
-  renderStatus(payload, latestStatus, tab, injectionError);
+  let latestPayload = payload;
+  renderStatus(latestPayload, latestStatus, tab, injectionError);
 
   while (isTransientContentStatus(latestStatus) && Date.now() < deadline) {
     await delay(CONTENT_STATUS_POLL_MS);
     latestStatus = await readContentStatus(tab);
-    renderStatus(payload, latestStatus, tab, injectionError);
+    latestPayload = await requestQuickStatus(tab).catch(() => latestPayload);
+    renderStatus(latestPayload, latestStatus, tab, injectionError);
   }
 
   return latestStatus;
 }
 
 async function refreshStatus() {
-  statusEl.textContent = "Checking offline model...";
-  diagnosticEl.textContent = "Checking page scanner...";
   try {
-    activeTab = await getActiveTab();
-    const hostname = hostnameForTab(activeTab);
-    siteEl.textContent = hostname || "Unsupported page";
-    let payload = await sendRuntimeMessage({
-      type: "toxicShield:getStatus",
-      tabId: activeTab?.id,
-      hostname,
-    });
+    const quick = await renderQuickStatus();
+    let payload = quick.payload;
+    let contentStatus = quick.contentStatus;
     let injectionError = null;
-    let contentStatus = await readContentStatus(activeTab);
+
     if (!contentStatus && activeTab?.id && supportedPage(activeTab)) {
       const injectionResult = await ensureContentScript(activeTab);
       injectionError = injectionResult?.injectionError || null;
@@ -169,16 +261,18 @@ async function refreshStatus() {
     } else if (isTransientContentStatus(contentStatus)) {
       contentStatus = await pollContentStatus(activeTab, payload, injectionError);
     }
-    payload = await sendRuntimeMessage({
-      type: "toxicShield:getStatus",
-      tabId: activeTab?.id,
-      hostname,
-    });
+
+    payload = await requestFullStatus(activeTab);
     renderStatus(payload, contentStatus, activeTab, injectionError);
   } catch (error) {
     statusEl.textContent = error.message;
     diagnosticEl.textContent = "Open a supported social page, then reload the extension and the page.";
   }
+}
+
+function startStatusPolling() {
+  window.clearInterval(statusPollTimer);
+  statusPollTimer = window.setInterval(refreshCachedStatus, POPUP_STATUS_POLL_MS);
 }
 
 refreshButton.addEventListener("click", refreshStatus);
@@ -202,3 +296,4 @@ enabledInput.addEventListener("change", async () => {
 });
 
 refreshStatus();
+startStatusPolling();

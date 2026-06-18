@@ -3,7 +3,9 @@ const assert = require("node:assert/strict");
 
 const {
   formatPredictionResults,
+  makeInitialProgress,
   makeInitialStats,
+  updateProgress,
   updateStatsWithResults,
   updateStatsWithScanReport,
 } = require("../background_helpers.js");
@@ -66,4 +68,29 @@ test("background helpers preserve latest content-script scan diagnostics", () =>
   assert.equal(stats.lastAdapterId, "youtube");
   assert.equal(stats.lastScanError, "Model failed to load");
   assert.ok(stats.lastContentAt);
+});
+
+test("background helpers track runtime progress without comment text", () => {
+  const progress = makeInitialProgress();
+
+  updateProgress(progress, {
+    phase: "running_batch",
+    message: "Running ONNX inference 8 comments",
+    current: 2,
+    total: 3,
+    tabId: 42,
+    text: "this raw comment must not be retained",
+  });
+
+  assert.equal(progress.phase, "running_batch");
+  assert.equal(progress.message, "Running ONNX inference 8 comments");
+  assert.equal(progress.current, 2);
+  assert.equal(progress.total, 3);
+  assert.equal(progress.tabId, 42);
+  assert.ok(progress.updatedAt);
+  assert.equal(Object.hasOwn(progress, "text"), false);
+
+  updateProgress(progress, { phase: "idle", message: "Scan complete" });
+  assert.equal(progress.phase, "idle");
+  assert.equal(progress.message, "Scan complete");
 });

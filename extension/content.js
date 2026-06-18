@@ -22,6 +22,9 @@ const SITE_ADAPTERS_LIB = globalThis.ToxicShieldSiteAdapters ?? {};
 let lastContentStatus = {
   status: "starting",
   candidate_count: 0,
+  processed_count: 0,
+  blocked_count: 0,
+  marked_count: 0,
   adapter_id: null,
   error: null,
   updated_at: null,
@@ -188,6 +191,9 @@ async function scanPage() {
     await reportScan({
       status: lastContentStatus.status === "scanned" ? "idle" : "no_candidates",
       candidate_count: 0,
+      processed_count: 0,
+      blocked_count: 0,
+      marked_count: 0,
       adapter_id: adapterId,
       error: null,
     });
@@ -196,20 +202,41 @@ async function scanPage() {
 
   try {
     await reportScan({
+      status: "collecting_done",
+      candidate_count: candidates.length,
+      processed_count: 0,
+      blocked_count: 0,
+      marked_count: 0,
+      adapter_id: adapterId,
+      error: null,
+    });
+    await reportScan({
       status: "predicting",
       candidate_count: candidates.length,
+      processed_count: 0,
+      blocked_count: 0,
+      marked_count: 0,
       adapter_id: adapterId,
       error: null,
     });
     const results = await getPredictions(candidates);
+    let blockedCount = 0;
+    let markedCount = 0;
     results.forEach((result, index) => {
       const candidate = candidates[index];
-      if (candidate && result) applyResult(candidate, result);
+      if (candidate && result) {
+        if (result.action === "block") blockedCount += 1;
+        if (result.action === "review") markedCount += 1;
+        applyResult(candidate, result);
+      }
     });
     markProcessed(candidates);
     await reportScan({
       status: "scanned",
       candidate_count: candidates.length,
+      processed_count: results.filter(Boolean).length,
+      blocked_count: blockedCount,
+      marked_count: markedCount,
       adapter_id: adapterId,
       error: null,
     });
@@ -217,6 +244,9 @@ async function scanPage() {
     await reportScan({
       status: "prediction_error",
       candidate_count: candidates.length,
+      processed_count: 0,
+      blocked_count: 0,
+      marked_count: 0,
       adapter_id: adapterId,
       error: error.message,
     });

@@ -26,7 +26,13 @@ test("content script reports injected and scheduled states before prediction", (
 
   assert.match(source, /status:\s*"injected"/);
   assert.match(source, /status:\s*"scheduled"/);
+  assert.match(source, /status:\s*"collecting_done"/);
+  assert.match(source, /status:\s*"predicting"/);
+  assert.match(source, /status:\s*"scanned"/);
   assert.match(source, /candidate_count:\s*candidates\.length/);
+  assert.match(source, /processed_count/);
+  assert.match(source, /blocked_count/);
+  assert.match(source, /marked_count/);
 });
 
 test("popup polls transient content states instead of reading once after injection", () => {
@@ -36,4 +42,20 @@ test("popup polls transient content states instead of reading once after injecti
   assert.match(source, /TRANSIENT_CONTENT_STATUSES/);
   assert.match(source, /pollContentStatus/);
   assert.match(source, /starting|injected|scheduled|predicting/);
+});
+
+test("popup renders cached quick status before polling slower status", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "popup.js"), "utf8");
+
+  assert.match(source, /toxicShield:getQuickStatus/);
+  assert.match(source, /renderProgress/);
+  assert.match(source, /modelProgress/);
+  assert.match(source, /scannerProgress/);
+  assert.match(source, /runtimeProgress/);
+
+  const firstQuickStatus = source.indexOf("toxicShield:getQuickStatus");
+  const firstFullStatus = source.indexOf("toxicShield:getStatus");
+  assert.ok(firstQuickStatus >= 0, "popup must request quick status");
+  assert.ok(firstFullStatus >= 0, "popup must still support full status refresh");
+  assert.ok(firstQuickStatus < firstFullStatus, "quick status should be requested before full status");
 });

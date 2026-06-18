@@ -419,3 +419,44 @@ Risks:
 
 Next:
 - Keep artifacts/distilbert as default model; next experiment should try capped BCE pos_weight or ASL gamma_neg=4.5 for long-tail labels.
+
+
+## Added popup scan progress and non-blocking status
+
+Actor: codex
+Thread: extension-popup-progress
+Purpose: work
+
+Summary:
+- Added popup scan progress and non-blocking status
+
+Details:
+  Popup status now starts with cached background state through `toxicShield:getQuickStatus`, so it does not force offscreen document creation or ONNX initialization. Background caches runtime progress and receives `toxicShield:offscreenProgress` from the hidden inference page. Offscreen reports `configuring_ort`, `loading_tokenizer`, `loading_model_file`, `creating_session`, `tokenizing`, `running_batch`, and `formatting_results` without sending raw comment text. Content scan reports now include `collecting_done`, `processed_count`, `blocked_count`, and `marked_count`. Popup UI adds `Model`, `Scanner`, and `Progress` rows and polls quick status.
+
+Files touched:
+- extension/manifest.json
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.html
+- extension/popup.css
+- extension/popup.js
+- extension/README.md
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+
+Tests:
+- node --test extension/tests/*.test.js passed 40 tests
+- node --check extension/supported_sites.js extension/background.js extension/content.js extension/popup.js extension/shared.js extension/tokenizer.js extension/background_helpers.js extension/site_adapters.js extension/offscreen_inference.js passed
+- python -m unittest discover -s tests -v passed 8 tests
+- scripts/verify_extension_model.py passed with max abs diff 0.000005
+- git diff --check passed with only existing Windows LF-to-CRLF warnings
+
+Risks:
+- Manual Chrome reload is required for version 0.3.1. This change cannot eliminate browser-level startup delay before popup JS starts, but once popup JS runs it no longer waits on offscreen/model initialization.
+
+Next:
+- Reload the unpacked extension, refresh a supported social page, open popup during first scan, and confirm model/scanner/progress lines update instead of appearing stuck.

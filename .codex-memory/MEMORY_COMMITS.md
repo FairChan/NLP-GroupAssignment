@@ -390,3 +390,36 @@ Changed memory locations:
 Related files:
 - .codex-memory/ARCHIVE/memory-archive-20260616-212016.md
 - .codex-memory/SUMMARY.md
+
+## mem-a4f2e8c9d019 - 2026-06-19 00:41 中国标准时间
+
+Memory number: 14
+Actor: codex
+Thread: extension-popup-progress
+Purpose: work
+Branch: main
+Git commit: 3f1694f
+
+Summary:
+- Added popup scan progress and non-blocking status
+
+Changed memory locations:
+- .codex-memory/THREADS/extension-popup-progress.md entry #1 appended 2026-06-19 00:41 中国标准时间 - Added popup scan progress and non-blocking status
+- .codex-memory/TASK_LOG.md entry #12 appended 2026-06-19 00:41 中国标准时间 - codex / extension-popup-progress
+- .codex-memory/HANDOFF.md entry #13 appended Added popup scan progress and non-blocking status
+- .codex-memory/CURRENT_WORK.md entry #14 appended Added popup scan progress and non-blocking status
+
+Related files:
+- extension/manifest.json
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.html
+- extension/popup.css
+- extension/popup.js
+- extension/README.md
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js

@@ -24,6 +24,33 @@ let modelState = {
   loadedAt: null,
 };
 
+function sendProgress(progress) {
+  try {
+    const progressPayload = {
+      phase: progress?.phase || "idle",
+      message: progress?.message || "",
+      current: Number(progress?.current || 0),
+      total: Number(progress?.total || 0),
+      tabId: progress?.tabId ?? null,
+    };
+    if (progress?.currentBatch !== undefined) progressPayload.currentBatch = progress.currentBatch;
+    if (progress?.totalBatches !== undefined) progressPayload.totalBatches = progress.totalBatches;
+    if (progress?.textCount !== undefined) progressPayload.textCount = progress.textCount;
+    chrome.runtime.sendMessage(
+      {
+        type: "toxicShield:offscreenProgress",
+        progress: progressPayload,
+        model: modelState,
+      },
+      () => {
+        chrome.runtime.lastError;
+      },
+    );
+  } catch {
+    // Progress is best-effort; prediction must continue if the popup is closed.
+  }
+}
+
 function runtimeUrl(path) {
   return chrome.runtime.getURL(path);
 }
@@ -97,12 +124,24 @@ async function loadModel() {
   };
   modelLoadPromise = (async () => {
     try {
+      sendProgress({
+        phase: "configuring_ort",
+        message: "Configuring ONNX Runtime Web.",
+        current: 0,
+        total: 4,
+      });
       configureOrt();
-      const [tokenizerJson, loadedThresholds, loadedTrainingConfig, modelBytes] = await Promise.all([
+
+      sendProgress({
+        phase: "loading_tokenizer",
+        message: "Loading tokenizer, thresholds, and training config.",
+        current: 1,
+        total: 4,
+      });
+      const [tokenizerJson, loadedThresholds, loadedTrainingConfig] = await Promise.all([
         fetchJson(`${MODEL_DIR}/tokenizer.json`),
         fetchJson(`${MODEL_DIR}/thresholds.json`),
         fetchJson(`${MODEL_DIR}/training_config.json`),
-        fetchModelBytes(),
       ]);
       trainingConfig = loadedTrainingConfig;
       thresholds = loadedThresholds;
@@ -111,16 +150,43 @@ async function loadModel() {
         headTokens: getHeadTokens(),
         tailTokens: getTailTokens(),
       });
+
+      sendProgress({
+        phase: "loading_model_file",
+        message: "Loading local ONNX model file.",
+        current: 2,
+        total: 4,
+      });
+      const modelBytes = await fetchModelBytes();
+
+      sendProgress({
+        phase: "creating_session",
+        message: "Creating ONNX inference session.",
+        current: 3,
+        total: 4,
+      });
       session = await createSession(modelBytes);
       modelState.status = "ready";
       modelState.error = null;
       modelState.loadedAt = new Date().toISOString();
+      sendProgress({
+        phase: "ready",
+        message: "Offline model ready.",
+        current: 4,
+        total: 4,
+      });
     } catch (error) {
       modelState.status = "error";
       modelState.error = error?.message || String(error);
       session = null;
       tokenizer = null;
       thresholds = null;
+      sendProgress({
+        phase: "error",
+        message: modelState.error,
+        current: 0,
+        total: 0,
+      });
       throw error;
     } finally {
       modelLoadPromise = null;
@@ -140,7 +206,17 @@ function flattenBigInt(rows, field) {
   return data;
 }
 
-async function runBatch(texts) {
+async function runBatch(texts, batchProgress) {
+  sendProgress({
+    phase: "tokenizing",
+    message: `Tokenizing batch ${batchProgress.currentBatch}/${batchProgress.totalBatches}.`,
+    current: batchProgress.currentBatch,
+    total: batchProgress.totalBatches,
+    currentBatch: batchProgress.currentBatch,
+    totalBatches: batchProgress.totalBatches,
+    textCount: texts.length,
+    tabId: batchProgress.tabId,
+  });
   const encodedRows = tokenizer.encodeBatch(texts);
   const maxLength = getMaxLength();
   const feeds = {
@@ -150,6 +226,16 @@ async function runBatch(texts) {
       maxLength,
     ]),
   };
+  sendProgress({
+    phase: "running_batch",
+    message: `Running ONNX inference for ${texts.length} comment(s), batch ${batchProgress.currentBatch}/${batchProgress.totalBatches}.`,
+    current: batchProgress.currentBatch,
+    total: batchProgress.totalBatches,
+    currentBatch: batchProgress.currentBatch,
+    totalBatches: batchProgress.totalBatches,
+    textCount: texts.length,
+    tabId: batchProgress.tabId,
+  });
   const outputs = await session.run(feeds);
   const logitsTensor = outputs.logits || outputs[session.outputNames?.[0]];
   const logits = Array.from(logitsTensor.data);
@@ -158,16 +244,30 @@ async function runBatch(texts) {
   for (let offset = 0; offset < logits.length; offset += labelCount) {
     rows.push(logits.slice(offset, offset + labelCount));
   }
+  sendProgress({
+    phase: "formatting_results",
+    message: `Formatting results for batch ${batchProgress.currentBatch}/${batchProgress.totalBatches}.`,
+    current: batchProgress.currentBatch,
+    total: batchProgress.totalBatches,
+    currentBatch: batchProgress.currentBatch,
+    totalBatches: batchProgress.totalBatches,
+    textCount: texts.length,
+    tabId: batchProgress.tabId,
+  });
   return OFFSCREEN_FORMAT_PREDICTION_RESULTS(rows, thresholds);
 }
 
-async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE) {
+async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE, tabId = null) {
   await loadModel();
   const normalizedTexts = texts.map((text) => String(text || "").trim());
   const results = [];
-  for (let start = 0; start < normalizedTexts.length; start += batchSize) {
-    const batch = normalizedTexts.slice(start, start + batchSize);
-    results.push(...(await runBatch(batch)));
+  const safeBatchSize = Math.max(1, Number(batchSize || DEFAULT_BATCH_SIZE));
+  const totalBatches = Math.max(1, Math.ceil(normalizedTexts.length / safeBatchSize));
+  let currentBatch = 0;
+  for (let start = 0; start < normalizedTexts.length; start += safeBatchSize) {
+    currentBatch += 1;
+    const batch = normalizedTexts.slice(start, start + safeBatchSize);
+    results.push(...(await runBatch(batch, { currentBatch, totalBatches, tabId })));
   }
   return results;
 }
@@ -183,7 +283,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (message.type === "toxicShield:offscreenPredict") {
       const texts = Array.isArray(message.texts) ? message.texts : [];
-      const results = await predictTexts(texts, Number(message.batchSize || DEFAULT_BATCH_SIZE));
+      const results = await predictTexts(texts, Number(message.batchSize || DEFAULT_BATCH_SIZE), message.tabId ?? null);
       sendResponse({ ok: true, results, model: modelState });
     }
   })().catch((error) => {
@@ -192,6 +292,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       status: "error",
       error: error?.message || String(error),
     };
+    sendProgress({
+      phase: "error",
+      message: modelState.error,
+      tabId: message.tabId ?? null,
+    });
     sendResponse({ error: error?.message || String(error), model: modelState });
   });
   return true;

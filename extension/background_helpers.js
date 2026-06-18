@@ -45,8 +45,37 @@ function makeInitialStats() {
     lastScanStatus: "not_injected",
     lastScanError: null,
     lastCandidateCount: 0,
+    lastProcessedCount: 0,
+    lastBlockedCount: 0,
+    lastMarkedCount: 0,
     lastAdapterId: null,
   };
+}
+
+function makeInitialProgress() {
+  return {
+    phase: "idle",
+    message: "Waiting for page activity.",
+    current: 0,
+    total: 0,
+    tabId: null,
+    updatedAt: null,
+  };
+}
+
+function updateProgress(progress, patch) {
+  const target = progress || makeInitialProgress();
+  const next = patch || {};
+  if (next.phase !== undefined) target.phase = String(next.phase || "idle");
+  if (next.message !== undefined) target.message = String(next.message || "");
+  if (next.current !== undefined) target.current = Math.max(0, Number(next.current) || 0);
+  if (next.total !== undefined) target.total = Math.max(0, Number(next.total) || 0);
+  if (next.tabId !== undefined) {
+    const numericTabId = Number(next.tabId);
+    target.tabId = Number.isFinite(numericTabId) ? numericTabId : null;
+  }
+  target.updatedAt = new Date().toISOString();
+  return target;
 }
 
 function updateStatsWithResults(stats, results) {
@@ -62,6 +91,9 @@ function updateStatsWithScanReport(stats, report) {
   stats.lastScanStatus = String(report?.status || "unknown");
   stats.lastScanError = report?.error ? String(report.error) : null;
   stats.lastCandidateCount = Number(report?.candidate_count ?? report?.candidateCount ?? 0);
+  stats.lastProcessedCount = Number(report?.processed_count ?? report?.processedCount ?? stats.lastProcessedCount ?? 0);
+  stats.lastBlockedCount = Number(report?.blocked_count ?? report?.blockedCount ?? stats.lastBlockedCount ?? 0);
+  stats.lastMarkedCount = Number(report?.marked_count ?? report?.markedCount ?? stats.lastMarkedCount ?? 0);
   stats.lastAdapterId = report?.adapter_id || report?.adapterId || stats.lastAdapterId || null;
   return stats;
 }
@@ -70,7 +102,9 @@ if (typeof module !== "undefined") {
   module.exports = {
     LABELS: LABELS_REF,
     formatPredictionResults,
+    makeInitialProgress,
     makeInitialStats,
+    updateProgress,
     updateStatsWithResults,
     updateStatsWithScanReport,
   };
@@ -80,7 +114,9 @@ if (typeof globalThis !== "undefined") {
   globalThis.ToxicShieldBackgroundHelpers = {
     LABELS: LABELS_REF,
     formatPredictionResults,
+    makeInitialProgress,
     makeInitialStats,
+    updateProgress,
     updateStatsWithResults,
     updateStatsWithScanReport,
   };

@@ -9,8 +9,22 @@
   <body>
     <main>
       <h1>Comment Shield</h1>
-      <p id="status">Checking offline model...</p>
-      <p id="diagnostic" class="diagnostic">Waiting for page scan...</p>
+      <p id="status">Opening cached status...</p>
+      <p id="diagnostic" class="diagnostic">Preparing scanner status...</p>
+      <section class="progress-panel" aria-label="Scan progress">
+        <div>
+          <span>Model</span>
+          <strong id="modelProgress">Waiting</strong>
+        </div>
+        <div>
+          <span>Scanner</span>
+          <strong id="scannerProgress">Waiting</strong>
+        </div>
+        <div>
+          <span>Progress</span>
+          <strong id="runtimeProgress">Idle</strong>
+        </div>
+      </section>
       <dl>
         <div>
           <dt>Site</dt>

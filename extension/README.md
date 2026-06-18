@@ -28,12 +28,12 @@ The model loads in a hidden extension document on the first scan. The first scan
 After reloading the unpacked extension, refresh the social-media tab. On a supported page, the content script writes a hidden diagnostic marker to the page root:
 
 ```text
-data-toxic-shield-injected="0.3.0"
+data-toxic-shield-injected="0.3.1"
 ```
 
-If that marker is missing, open the extension popup on the social-media tab. Version `0.3.0` retries content-script injection on supported tab load/activation and from the popup, then reports `markerPresent`, `injectedVersion`, and any injection error in the diagnostic panel. If the popup reports an injection failure, check that the unpacked extension path is exactly `C:\Users\ssema\Desktop\nlpga\extension`, the version is `0.3.0`, and site access is allowed for the current host, then refresh the page again.
+If that marker is missing, open the extension popup on the social-media tab. Version `0.3.1` retries content-script injection on supported tab load/activation and from the popup, then reports `markerPresent`, `injectedVersion`, and any injection error in the diagnostic panel. If the popup reports an injection failure, check that the unpacked extension path is exactly `C:\Users\ssema\Desktop\nlpga\extension`, the version is `0.3.1`, and site access is allowed for the current host, then refresh the page again.
 
-If the marker exists but comments are still not hidden, open the popup and check the diagnostic text. `injected`, `scheduled`, and `predicting` are transient first-scan states; wait for them to settle before treating the count as final. `prediction_error` or `Model error` points to the offscreen ONNX runtime path; `no_candidates` means the page needs to be scrolled to a visible comment area or the site adapter needs updating.
+If the marker exists but comments are still not hidden, open the popup and check the progress panel. The popup renders cached status first, then updates `Model`, `Scanner`, and `Progress` while the hidden offscreen page loads tokenizer/model assets or runs ONNX batches. `injected`, `scheduled`, `collecting_done`, and `predicting` are transient first-scan states; wait for them to settle before treating the count as final. `prediction_error` or `Model error` points to the offscreen ONNX runtime path; `no_candidates` means the page needs to be scrolled to a visible comment area or the site adapter needs updating.
 
 ## Quick Fixture
 

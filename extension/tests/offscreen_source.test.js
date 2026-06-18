@@ -40,6 +40,22 @@ test("offscreen inference script handles model loading and prediction messages",
   assert.match(source, /formatPredictionResults/);
 });
 
+test("offscreen inference reports model and batch progress without raw texts", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "offscreen_inference.js"), "utf8");
+
+  assert.match(source, /toxicShield:offscreenProgress/);
+  assert.match(source, /configuring_ort/);
+  assert.match(source, /loading_tokenizer/);
+  assert.match(source, /loading_model_file/);
+  assert.match(source, /creating_session/);
+  assert.match(source, /tokenizing/);
+  assert.match(source, /running_batch/);
+  assert.match(source, /formatting_results/);
+  assert.match(source, /currentBatch|current/);
+  assert.match(source, /totalBatches|total/);
+  assert.ok(!source.includes("progress: { texts"), "progress messages must not include raw comment text arrays");
+});
+
 test("offscreen inference scripts share a document scope without duplicate bindings", () => {
   parseCombinedSources(
     "vendor/onnxruntime-web/ort.min.js",

@@ -5,6 +5,8 @@ const BG_SHARED = globalThis.ToxicShieldShared ?? {};
 const BG_HELPERS = globalThis.ToxicShieldBackgroundHelpers ?? {};
 
 const BG_MAKE_INITIAL_STATS = BG_HELPERS.makeInitialStats;
+const BG_MAKE_INITIAL_PROGRESS = BG_HELPERS.makeInitialProgress;
+const BG_UPDATE_PROGRESS = BG_HELPERS.updateProgress;
 const BG_UPDATE_STATS_WITH_RESULTS = BG_HELPERS.updateStatsWithResults;
 const BG_UPDATE_STATS_WITH_SCAN_REPORT = BG_HELPERS.updateStatsWithScanReport;
 
@@ -24,6 +26,7 @@ let modelState = {
   error: null,
   loadedAt: null,
 };
+let runtimeProgress = BG_MAKE_INITIAL_PROGRESS();
 const tabStats = new Map();
 
 function normalizeHostname(hostname) {
@@ -147,11 +150,18 @@ function statsForTab(tabId) {
   return tabStats.get(tabId);
 }
 
+function updateRuntimeProgress(patch) {
+  runtimeProgress = BG_UPDATE_PROGRESS(runtimeProgress, patch);
+  return runtimeProgress;
+}
+
 function getStatusPayload(tabId, hostname) {
   const stats = tabId ? statsForTab(tabId) : BG_MAKE_INITIAL_STATS();
   return {
     model: modelState,
     stats,
+    runtimeProgress,
+    progress: runtimeProgress,
     hostname,
     lastScanStatus: stats.lastScanStatus,
     lastScanError: stats.lastScanError,
@@ -259,12 +269,13 @@ async function getOffscreenStatus() {
   return modelState;
 }
 
-async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE) {
+async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE, tabId = null) {
   await ensureOffscreenDocument();
   const response = await sendOffscreenMessageWithRetry({
     type: "toxicShield:offscreenPredict",
     texts,
     batchSize,
+    tabId,
   });
   mergeModelState(response.model);
   return response.results || [];
@@ -292,20 +303,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
 
+    if (message.type === "toxicShield:offscreenProgress") {
+      mergeModelState(message.model);
+      updateRuntimeProgress(message.progress || {});
+      sendResponse({ ok: true, progress: runtimeProgress, model: modelState });
+      return;
+    }
+
+    if (message.type === "toxicShield:getQuickStatus") {
+      const enabled = hostname ? await isSiteEnabled(hostname) : true;
+      sendResponse({ ...getStatusPayload(tabId, hostname), site_enabled: enabled });
+      return;
+    }
+
     if (message.type === "toxicShield:getStatus") {
       const enabled = hostname ? await isSiteEnabled(hostname) : true;
-      if (enabled) {
-        try {
-          await getOffscreenStatus();
-        } catch (error) {
-          mergeModelState({
-            status: "error",
-            backend: null,
-            error: error?.message || String(error),
-            loadedAt: null,
-          });
-        }
-      }
       sendResponse({ ...getStatusPayload(tabId, hostname), site_enabled: enabled });
       return;
     }
@@ -324,12 +336,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "toxicShield:predict") {
       if (!(await isSiteEnabled(hostname))) {
+        updateRuntimeProgress({
+          phase: "idle",
+          message: "Scanning is disabled for this site.",
+          current: 0,
+          total: 0,
+          tabId,
+        });
         sendResponse({ disabled: true, results: [] });
         return;
       }
       const texts = Array.isArray(message.texts) ? message.texts : [];
-      const results = await predictTexts(texts, Number(message.batchSize || DEFAULT_BATCH_SIZE));
+      updateRuntimeProgress({
+        phase: "queued",
+        message: `Queued ${texts.length} candidate comment(s) for local inference.`,
+        current: 0,
+        total: texts.length,
+        tabId,
+      });
+      updateRuntimeProgress({
+        phase: "predicting",
+        message: `Starting offline inference for ${texts.length} candidate comment(s).`,
+        current: 0,
+        total: texts.length,
+        tabId,
+      });
+      const results = await predictTexts(texts, Number(message.batchSize || DEFAULT_BATCH_SIZE), tabId);
       if (tabId) BG_UPDATE_STATS_WITH_RESULTS(statsForTab(tabId), results);
+      updateRuntimeProgress({
+        phase: "idle",
+        message: `Scan complete for ${texts.length} candidate comment(s).`,
+        current: texts.length,
+        total: texts.length,
+        tabId,
+      });
       sendResponse({ disabled: false, results, model: modelState });
       return;
     }
@@ -348,6 +388,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendResponse({ error: `Unknown message type: ${message.type}` });
   })().catch((error) => {
+    const tabId = message.tabId || sender.tab?.id || null;
+    updateRuntimeProgress({
+      phase: "error",
+      message: error?.message || String(error),
+      tabId,
+    });
     mergeModelState({
       status: "error",
       backend: modelState.backend,

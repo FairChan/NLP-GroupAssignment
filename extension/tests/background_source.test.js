@@ -81,3 +81,25 @@ test("background has supported-tab injection fallbacks and returns marker diagno
   assert.match(source, /injectedVersion/);
   assert.match(source, /toxicShieldInjected/);
 });
+
+test("background exposes quick cached status without forcing offscreen initialization", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.match(source, /toxicShield:getQuickStatus/);
+  assert.match(source, /runtimeProgress/);
+  assert.match(source, /toxicShield:offscreenProgress/);
+  assert.match(source, /phase:\s*"queued"/);
+  assert.match(source, /phase:\s*"predicting"/);
+  assert.match(source, /phase:\s*"idle"/);
+
+  const quickStatusIndex = source.indexOf('message.type === "toxicShield:getQuickStatus"');
+  const getStatusIndex = source.indexOf('message.type === "toxicShield:getStatus"');
+  const quickStatusBlock = source.slice(quickStatusIndex, getStatusIndex);
+  assert.ok(quickStatusIndex >= 0, "quick status handler is missing");
+  assert.ok(!quickStatusBlock.includes("getOffscreenStatus"), "quick status must not create or await offscreen status");
+
+  const setSiteEnabledIndex = source.indexOf('message.type === "toxicShield:setSiteEnabled"');
+  const fullStatusBlock = source.slice(getStatusIndex, setSiteEnabledIndex);
+  assert.ok(getStatusIndex >= 0, "full status handler is missing");
+  assert.ok(!fullStatusBlock.includes("getOffscreenStatus"), "full status must return cached state for popup speed");
+});
