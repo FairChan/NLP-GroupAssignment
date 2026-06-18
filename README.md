@@ -145,3 +145,22 @@ python -m src.toxic_detector.train_transformer --batch-size 4 --gradient-accumul
 ```powershell
 python -m src.toxic_detector.train_transformer --cpu --batch-size 2 --eval-batch-size 4 --epochs 1
 ```
+
+## 8. High-performance retraining path
+
+For the accuracy-first teacher/student retraining workflow, use:
+
+```powershell
+pip install -r requirements.txt
+.\scripts\train_high_performance.ps1
+```
+
+This runs the planned sequence:
+
+1. Reproduce the current DistilBERT baseline.
+2. Train ModernBERT and DeBERTa-v3 teacher experiments.
+3. Select the best teacher checkpoint.
+4. Distill the selected teacher into a MiniLM student.
+5. Export ONNX, try INT8 quantization, benchmark the extension model, and apply the release gate.
+
+Detailed instructions are in `docs/retraining_guide.md`. Do not replace `extension/model` unless the generated release gate passes.

@@ -99,9 +99,11 @@ def quantize_onnx(onnx_path: Path, output_dir: Path) -> Path | None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export trained DistilBERT model for the browser extension.")
+    parser.add_argument("--config")
     parser.add_argument("--model-dir", default="artifacts/distilbert")
     parser.add_argument("--output-dir", default="extension/model")
     parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument("--no-quantize", action="store_true")
     return parser.parse_args()
 
 
@@ -114,15 +116,21 @@ def main() -> None:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     args = parse_args()
-    model_dir = Path(args.model_dir)
-    output_dir = Path(args.output_dir)
+    config = {}
+    if args.config:
+        config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+
+    model_dir = Path(config.get("model_dir", args.model_dir))
+    output_dir = Path(config.get("output_dir", args.output_dir))
+    max_length = int(config.get("max_length", args.max_length))
+    should_quantize = bool(config.get("quantize", True)) and not args.no_quantize
     if not model_dir.exists():
         raise FileNotFoundError(f"Model directory not found: {model_dir}")
 
     update_label_mapping(model_dir)
     copy_metadata(model_dir, output_dir)
-    onnx_path = export_onnx(model_dir, output_dir, max_length=args.max_length)
-    quantized_path = quantize_onnx(onnx_path, output_dir)
+    onnx_path = export_onnx(model_dir, output_dir, max_length=max_length)
+    quantized_path = quantize_onnx(onnx_path, output_dir) if should_quantize else None
     print(f"Exported ONNX model: {onnx_path}")
     if quantized_path:
         print(f"Exported quantized ONNX model: {quantized_path}")

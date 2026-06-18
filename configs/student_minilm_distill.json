@@ -1,0 +1,38 @@
+{
+  "data_path": "data/raw/train.csv",
+  "teacher_dir": "artifacts/teacher_best",
+  "output_dir": "artifacts/student_minilm_distilled",
+  "model_name": "microsoft/MiniLM-L12-H384-uncased",
+  "labels": ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"],
+  "max_length": 256,
+  "head_tokens": 200,
+  "tail_tokens": 50,
+  "batch_size": 8,
+  "eval_batch_size": 16,
+  "gradient_accumulation_steps": 2,
+  "epochs": 4,
+  "lr": 0.00003,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.06,
+  "supervised_loss": "asl",
+  "distillation_alpha": 0.4,
+  "temperature": 2.0,
+  "asymmetric_loss": {
+    "gamma_pos": 0.0,
+    "gamma_neg": 4.0,
+    "clip": 0.05
+  },
+  "valid_size": 0.1,
+  "fp16": true,
+  "num_workers": 0,
+  "supplemental_data": {
+    "neutral_identity_csv": "data/aux/identity_neutral.csv",
+    "toxigen_csv": "data/aux/toxigen_weak.csv"
+  },
+  "release_gate": {
+    "baseline_model_dir": "artifacts/distilbert",
+    "min_macro_f1": 0.741,
+    "min_macro_improvement": 0.015,
+    "long_tail_labels": ["threat", "identity_hate"]
+  }
+}

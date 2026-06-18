@@ -459,3 +459,50 @@ Risks:
 
 Next:
 - Reload extension and refresh target social page; open popup while comments are scanning to check live progress rows.
+
+
+## Implemented high-performance retraining pipeline
+
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+
+Summary:
+- Implemented high-performance retraining pipeline
+
+Details:
+  Added teacher/student retraining code and configs for ModernBERT, DeBERTa-v3, MiniLM distillation, APL-style loss, optional supplemental data, config-driven export, benchmark summary, and release-gate enforcement.
+
+Files touched:
+- README.md
+- requirements.txt
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- configs/student_minilm_distill.json
+- configs/export_int8.json
+- docs/retraining_guide.md
+- scripts/train_high_performance.ps1
+- scripts/select_best_teacher.py
+- scripts/benchmark_extension_model.py
+- scripts/export_extension_model.py
+- src/toxic_detector/losses.py
+- src/toxic_detector/train_transformer.py
+- src/toxic_detector/retraining.py
+- src/toxic_detector/supplemental_data.py
+- src/toxic_detector/train_teacher.py
+- src/toxic_detector/distill_student.py
+- tests/test_retraining_pipeline.py
+
+Tests:
+- python -m unittest discover -s tests -v passed 16 tests
+- node --test extension/tests/*.test.js passed 40 tests
+- CLI help passed for train_teacher, distill_student, select_best_teacher, benchmark_extension_model, export_extension_model
+- python -m compileall src scripts tests passed
+- git diff --check passed with only Windows LF-to-CRLF warnings
+- benchmark_extension_model smoke ran against existing extension/model/model.onnx and correctly failed release gate due size and no Macro F1 uplift
+
+Risks:
+- Full retraining still needs to be run separately in the toxic-nlp environment.
+
+Next:
+- Run `.\scripts\train_high_performance.ps1`; deploy only if release gate passes.

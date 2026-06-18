@@ -460,3 +460,50 @@ Risks:
 
 Next:
 - Reload the unpacked extension, refresh a supported social page, open popup during first scan, and confirm model/scanner/progress lines update instead of appearing stuck.
+
+
+## Implemented high-performance retraining pipeline
+
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+
+Summary:
+- Implemented high-performance retraining pipeline
+
+Details:
+  Added an accuracy-first teacher/student retraining workflow: ModernBERT and DeBERTa-v3 teacher configs, automatic best-teacher selection, MiniLM distillation, APL-style loss, optional neutral identity and ToxiGen weak-supervision CSV support, config-driven ONNX export, INT8 benchmark/gate summary, and a PowerShell orchestration script.
+
+Files touched:
+- README.md
+- requirements.txt
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- configs/student_minilm_distill.json
+- configs/export_int8.json
+- docs/retraining_guide.md
+- scripts/train_high_performance.ps1
+- scripts/select_best_teacher.py
+- scripts/benchmark_extension_model.py
+- scripts/export_extension_model.py
+- src/toxic_detector/losses.py
+- src/toxic_detector/train_transformer.py
+- src/toxic_detector/retraining.py
+- src/toxic_detector/supplemental_data.py
+- src/toxic_detector/train_teacher.py
+- src/toxic_detector/distill_student.py
+- tests/test_retraining_pipeline.py
+
+Tests:
+- python -m unittest discover -s tests -v passed 16 tests
+- node --test extension/tests/*.test.js passed 40 tests
+- CLI help passed for train_teacher, distill_student, select_best_teacher, benchmark_extension_model, export_extension_model
+- python -m compileall src scripts tests passed
+- git diff --check passed with only Windows LF-to-CRLF warnings
+- benchmark_extension_model smoke ran against existing extension/model/model.onnx and correctly failed release gate due size and no Macro F1 uplift
+
+Risks:
+- Full retraining was not run in this turn. The selected models require downloading large Hugging Face checkpoints and may run for hours on 8 GB GPU.
+
+Next:
+- Install updated requirements, run `.\scripts\train_high_performance.ps1`, inspect `artifacts/model_cards/retrain_report.md`, and replace plugin model only if release gate passes.

@@ -1,0 +1,40 @@
+{
+  "data_path": "data/raw/train.csv",
+  "output_dir": "artifacts/teacher_deberta_v3",
+  "model_name": "microsoft/deberta-v3-base",
+  "labels": ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"],
+  "max_length": 256,
+  "head_tokens": 200,
+  "tail_tokens": 50,
+  "batch_size": 4,
+  "eval_batch_size": 8,
+  "gradient_accumulation_steps": 4,
+  "epochs": 3,
+  "lr": 0.00002,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.06,
+  "losses": ["asl", "apl"],
+  "seeds": [42],
+  "asymmetric_loss": {
+    "gamma_pos": 0.0,
+    "gamma_neg": 4.0,
+    "clip": 0.05
+  },
+  "apl": {
+    "epsilon_pos": 1.0,
+    "epsilon_neg": 1.0
+  },
+  "valid_size": 0.1,
+  "fp16": true,
+  "num_workers": 0,
+  "supplemental_data": {
+    "neutral_identity_csv": "data/aux/identity_neutral.csv",
+    "toxigen_csv": "data/aux/toxigen_weak.csv"
+  },
+  "release_gate": {
+    "baseline_model_dir": "artifacts/distilbert",
+    "min_macro_f1": 0.741,
+    "min_macro_improvement": 0.015,
+    "long_tail_labels": ["threat", "identity_hate"]
+  }
+}

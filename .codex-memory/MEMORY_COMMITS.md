@@ -423,3 +423,41 @@ Related files:
 - extension/tests/background_source.test.js
 - extension/tests/content_source.test.js
 - extension/tests/offscreen_source.test.js
+
+## mem-b8e91d0f6542 - 2026-06-19 01:13 中国标准时间
+
+Memory number: 15
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+Branch: codex/high-performance-retraining
+Git commit: e31395f
+
+Summary:
+- Implemented high-performance retraining pipeline
+
+Changed memory locations:
+- .codex-memory/THREADS/high-performance-retraining.md entry #1 appended 2026-06-19 01:13 中国标准时间 - Implemented high-performance retraining pipeline
+- .codex-memory/TASK_LOG.md entry #13 appended 2026-06-19 01:13 中国标准时间 - codex / high-performance-retraining
+- .codex-memory/HANDOFF.md entry #14 appended Implemented high-performance retraining pipeline
+- .codex-memory/CURRENT_WORK.md entry #15 appended Implemented high-performance retraining pipeline
+
+Related files:
+- README.md
+- requirements.txt
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- configs/student_minilm_distill.json
+- configs/export_int8.json
+- docs/retraining_guide.md
+- scripts/train_high_performance.ps1
+- scripts/select_best_teacher.py
+- scripts/benchmark_extension_model.py
+- scripts/export_extension_model.py
+- src/toxic_detector/losses.py
+- src/toxic_detector/train_transformer.py
+- src/toxic_detector/retraining.py
+- src/toxic_detector/supplemental_data.py
+- src/toxic_detector/train_teacher.py
+- src/toxic_detector/distill_student.py
+- tests/test_retraining_pipeline.py

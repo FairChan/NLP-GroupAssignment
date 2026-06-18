@@ -18,12 +18,13 @@ from transformers import (
 
 from src.toxic_detector.config import DEFAULT_MODEL_NAME, LABELS
 from src.toxic_detector.data import load_jigsaw_train, multilabel_train_valid_split
-from src.toxic_detector.losses import AsymmetricLoss
+from src.toxic_detector.losses import AsymmetricLoss, AsymmetricPolynomialLoss
 from src.toxic_detector.metrics import (
     compute_multilabel_metrics,
     find_best_thresholds,
     save_json,
 )
+from src.toxic_detector.supplemental_data import append_optional_supplemental_data
 from src.toxic_detector.tokenization import encode_head_tail
 
 
@@ -60,6 +61,14 @@ def build_loss(args: argparse.Namespace, y_train: np.ndarray, device: torch.devi
             gamma_pos=args.gamma_pos,
             gamma_neg=args.gamma_neg,
             clip=args.asl_clip,
+        )
+    if args.loss == "apl":
+        return AsymmetricPolynomialLoss(
+            gamma_pos=args.gamma_pos,
+            gamma_neg=args.gamma_neg,
+            clip=args.asl_clip,
+            epsilon_pos=args.apl_epsilon_pos,
+            epsilon_neg=args.apl_epsilon_neg,
         )
 
     positives = np.clip(y_train.sum(axis=0), a_min=1.0, a_max=None)
@@ -127,6 +136,7 @@ def train_transformer(args: argparse.Namespace) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     frame = load_jigsaw_train(args.data_path)
+    frame = append_optional_supplemental_data(frame, getattr(args, "supplemental_data", None))
     train_frame, valid_frame = multilabel_train_valid_split(
         frame,
         valid_size=args.valid_size,
@@ -229,6 +239,11 @@ def train_transformer(args: argparse.Namespace) -> dict:
             "head_tokens": args.head_tokens,
             "tail_tokens": args.tail_tokens,
             "loss": args.loss,
+            "gamma_pos": args.gamma_pos,
+            "gamma_neg": args.gamma_neg,
+            "asl_clip": args.asl_clip,
+            "apl_epsilon_pos": getattr(args, "apl_epsilon_pos", None),
+            "apl_epsilon_neg": getattr(args, "apl_epsilon_neg", None),
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "gradient_accumulation_steps": args.gradient_accumulation_steps,
@@ -254,10 +269,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.06)
-    parser.add_argument("--loss", choices=["asl", "bce"], default="asl")
+    parser.add_argument("--loss", choices=["asl", "bce", "apl"], default="asl")
     parser.add_argument("--gamma-pos", type=float, default=0.0)
     parser.add_argument("--gamma-neg", type=float, default=4.0)
     parser.add_argument("--asl-clip", type=float, default=0.05)
+    parser.add_argument("--apl-epsilon-pos", type=float, default=1.0)
+    parser.add_argument("--apl-epsilon-neg", type=float, default=1.0)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--cpu", action="store_true")
