@@ -1,71 +1,106 @@
-const API_URL = "http://127.0.0.1:8000/predict";
-const COMMENT_SELECTORS = [
-  "[data-testid*='comment' i]",
-  "[aria-label*='comment' i]",
-  "[class*='comment' i]",
-  "article",
-  "p"
-];
+(() => {
+if (globalThis.__toxicShieldContentLoaded) {
+  try {
+    const manifest = chrome.runtime.getManifest?.();
+    document.documentElement.dataset.toxicShieldInjected = manifest?.version || "unknown";
+    document.documentElement.dataset.toxicShieldInjectedAt = new Date().toISOString();
+  } catch {
+    document.documentElement.dataset.toxicShieldInjected = "unknown";
+  }
+  if (typeof globalThis.__toxicShieldScheduleScan === "function") {
+    globalThis.__toxicShieldScheduleScan();
+  }
+  return;
+}
+globalThis.__toxicShieldContentLoaded = true;
 
-const processed = new WeakSet();
+let processed = new WeakSet();
+const predictionCache = new Map();
 let scanTimer = null;
+let siteEnabled = true;
+const SITE_ADAPTERS_LIB = globalThis.ToxicShieldSiteAdapters ?? {};
+let lastContentStatus = {
+  status: "starting",
+  candidate_count: 0,
+  adapter_id: null,
+  error: null,
+  updated_at: null,
+};
 
-function visibleElement(element) {
-  if (!(element instanceof HTMLElement)) return false;
-  if (element.closest(".toxic-detector-wrapper")) return false;
-  if (element.closest("textarea, input, [contenteditable='true']")) return false;
-  const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden" && element.offsetParent !== null;
-}
-
-function normalizeText(text) {
-  return (text || "").replace(/\s+/g, " ").trim();
-}
-
-function collectCandidates() {
-  const nodes = new Set();
-  for (const selector of COMMENT_SELECTORS) {
-    document.querySelectorAll(selector).forEach((node) => nodes.add(node));
+function markContentScriptInjected() {
+  try {
+    const manifest = chrome.runtime.getManifest?.();
+    document.documentElement.dataset.toxicShieldInjected = manifest?.version || "unknown";
+    document.documentElement.dataset.toxicShieldInjectedAt = new Date().toISOString();
+  } catch {
+    document.documentElement.dataset.toxicShieldInjected = "unknown";
   }
-
-  const candidates = [];
-  for (const node of nodes) {
-    if (!visibleElement(node) || processed.has(node)) continue;
-    const text = normalizeText(node.innerText || node.textContent);
-    if (text.length < 12 || text.length > 5000) continue;
-    if (node.children.length > 12 && !node.matches("article")) continue;
-    processed.add(node);
-    candidates.push({ node, text });
-  }
-  return candidates.slice(0, 50);
 }
 
-async function detectTexts(texts) {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ texts, threshold_profile: "balanced" })
+function sendMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        hostname: window.location.hostname,
+        ...message,
+      },
+      (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        if (response?.error) {
+          reject(new Error(response.error));
+          return;
+        }
+        resolve(response);
+      },
+    );
   });
-  if (!response.ok) {
-    throw new Error(`Detector API returned ${response.status}`);
-  }
-  return response.json();
 }
 
 function buildBadge(result) {
   const badge = document.createElement("div");
   badge.className = "toxic-detector-badge";
-  badge.textContent = `${result.action.toUpperCase()} | ${result.highest_label} ${(result.highest_score * 100).toFixed(0)}%`;
+  const score = Number(result.highest_score || 0);
+  badge.textContent = `${result.action.toUpperCase()} | ${result.highest_label} ${(score * 100).toFixed(0)}%`;
   return badge;
 }
 
+function updateContentStatus(status) {
+  lastContentStatus = {
+    ...lastContentStatus,
+    ...status,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function reportScan(status) {
+  updateContentStatus(status);
+  return sendMessage({
+    type: "toxicShield:scanReport",
+    report: lastContentStatus,
+  }).catch((error) => {
+    console.debug("Toxic Shield scan report unavailable:", error.message);
+  });
+}
+
+function markProcessed(candidates) {
+  candidates.forEach((candidate) => {
+    if (candidate?.node) processed.add(candidate.node);
+  });
+}
+
 function applyReview(node, result) {
+  if (node.dataset.toxicDetectorAction) return;
   node.classList.add("toxic-detector-review");
   node.dataset.toxicDetectorAction = result.action;
   node.prepend(buildBadge(result));
 }
 
 function applyBlock(node, result) {
+  if (node.dataset.toxicDetectorAction) return;
   const wrapper = document.createElement("div");
   wrapper.className = "toxic-detector-wrapper";
 
@@ -75,12 +110,14 @@ function applyBlock(node, result) {
   originalParent.insertBefore(wrapper, node);
   wrapper.appendChild(node);
   node.classList.add("toxic-detector-blurred");
+  node.dataset.toxicDetectorAction = result.action;
 
   const overlay = document.createElement("div");
   overlay.className = "toxic-detector-overlay";
+  const score = Number(result.highest_score || 0);
   overlay.innerHTML = `
     <strong>Hidden high-risk comment</strong>
-    <span>${result.highest_label} ${(result.highest_score * 100).toFixed(0)}%</span>
+    <span>${result.highest_label} ${(score * 100).toFixed(0)}%</span>
     <button type="button">Show anyway</button>
   `;
   overlay.querySelector("button").addEventListener("click", () => {
@@ -99,26 +136,150 @@ function applyResult(candidate, result) {
   applyReview(candidate.node, result);
 }
 
+async function getPredictions(candidates) {
+  const uncachedTexts = [];
+  candidates.forEach((candidate, index) => {
+    if (!predictionCache.has(candidate.text)) {
+      uncachedTexts.push(candidate.text);
+    }
+  });
+
+  if (uncachedTexts.length) {
+    const payload = await sendMessage({
+      type: "toxicShield:predict",
+      texts: uncachedTexts,
+      batchSize: 8,
+    });
+    if (payload.disabled) {
+      siteEnabled = false;
+      return [];
+    }
+    payload.results.forEach((result, index) => {
+      predictionCache.set(uncachedTexts[index], result);
+    });
+  }
+
+  return candidates.map((candidate) => predictionCache.get(candidate.text) || null);
+}
+
 async function scanPage() {
-  const candidates = collectCandidates();
-  if (!candidates.length) return;
+  if (!siteEnabled) {
+    await reportScan({
+      status: "disabled",
+      candidate_count: 0,
+      error: null,
+    });
+    return;
+  }
+  if (typeof SITE_ADAPTERS_LIB.collectCommentCandidates !== "function") {
+    await reportScan({
+      status: "adapter_missing",
+      candidate_count: 0,
+      adapter_id: null,
+      error: "site_adapters.js did not expose ToxicShieldSiteAdapters",
+    });
+    return;
+  }
+
+  const adapter = SITE_ADAPTERS_LIB.getAdapterForHostname?.(window.location.hostname);
+  const adapterId = adapter?.id || "unknown";
+  const candidates = SITE_ADAPTERS_LIB.collectCommentCandidates(document, window.location.hostname, processed);
+  if (!candidates.length) {
+    await reportScan({
+      status: lastContentStatus.status === "scanned" ? "idle" : "no_candidates",
+      candidate_count: 0,
+      adapter_id: adapterId,
+      error: null,
+    });
+    return;
+  }
 
   try {
-    const payload = await detectTexts(candidates.map((item) => item.text));
-    payload.results.forEach((result, index) => {
+    await reportScan({
+      status: "predicting",
+      candidate_count: candidates.length,
+      adapter_id: adapterId,
+      error: null,
+    });
+    const results = await getPredictions(candidates);
+    results.forEach((result, index) => {
       const candidate = candidates[index];
-      if (candidate) applyResult(candidate, result);
+      if (candidate && result) applyResult(candidate, result);
+    });
+    markProcessed(candidates);
+    await reportScan({
+      status: "scanned",
+      candidate_count: candidates.length,
+      adapter_id: adapterId,
+      error: null,
     });
   } catch (error) {
-    console.debug("Toxic detector unavailable:", error.message);
+    await reportScan({
+      status: "prediction_error",
+      candidate_count: candidates.length,
+      adapter_id: adapterId,
+      error: error.message,
+    });
+    console.debug("Toxic Shield unavailable:", error.message);
   }
 }
 
 function scheduleScan() {
   window.clearTimeout(scanTimer);
+  if (lastContentStatus.status !== "predicting") {
+    reportScan({
+      status: "scheduled",
+      candidate_count: lastContentStatus.candidate_count || 0,
+      adapter_id: lastContentStatus.adapter_id,
+      error: null,
+    });
+  }
   scanTimer = window.setTimeout(scanPage, 700);
 }
 
-scheduleScan();
+async function refreshSiteStatus() {
+  try {
+    const status = await sendMessage({ type: "toxicShield:getStatus" });
+    siteEnabled = status.site_enabled !== false;
+  } catch (error) {
+    console.debug("Toxic Shield status unavailable:", error.message);
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "toxicShield:rescan") {
+    processed = new WeakSet();
+    predictionCache.clear();
+    siteEnabled = true;
+    sendMessage({ type: "toxicShield:resetStats" }).finally(scheduleScan);
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message.type === "toxicShield:getContentStatus") {
+    sendResponse({ ok: true, content: lastContentStatus });
+    return;
+  }
+
+  if (message.type === "toxicShield:settingsChanged") {
+    siteEnabled = message.enabled !== false;
+    if (siteEnabled) {
+      processed = new WeakSet();
+      scheduleScan();
+    }
+    sendResponse({ ok: true });
+  }
+});
+
+markContentScriptInjected();
+globalThis.__toxicShieldScheduleScan = scheduleScan;
+reportScan({
+  status: "injected",
+  candidate_count: 0,
+  adapter_id: null,
+  error: null,
+});
+refreshSiteStatus().finally(scheduleScan);
 const observer = new MutationObserver(scheduleScan);
 observer.observe(document.documentElement, { childList: true, subtree: true });
+})();

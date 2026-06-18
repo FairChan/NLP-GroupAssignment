@@ -1,6 +1,13 @@
 from src.toxic_detector.config import DEFAULT_HEAD_TOKENS, DEFAULT_MAX_LENGTH, DEFAULT_TAIL_TOKENS
 
 
+def _encode_without_length_warning(tokenizer, text: str) -> list[int]:
+    try:
+        return tokenizer.encode(text, add_special_tokens=False, verbose=False)
+    except TypeError:
+        return tokenizer.encode(text, add_special_tokens=False)
+
+
 def encode_head_tail(
     tokenizer,
     text: str,
@@ -8,7 +15,7 @@ def encode_head_tail(
     head_tokens: int = DEFAULT_HEAD_TOKENS,
     tail_tokens: int = DEFAULT_TAIL_TOKENS,
 ) -> dict[str, list[int]]:
-    token_ids = tokenizer.encode(text, add_special_tokens=False)
+    token_ids = _encode_without_length_warning(tokenizer, text)
     available = max_length - tokenizer.num_special_tokens_to_add(pair=False)
     if len(token_ids) > available:
         tail = min(tail_tokens, available)

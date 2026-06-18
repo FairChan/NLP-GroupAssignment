@@ -1,0 +1,83 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+function parseCombinedSources(...files) {
+  const source = files
+    .map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8"))
+    .join("\n");
+  assert.doesNotThrow(() => new vm.Script(source), `Combined parse failed for ${files.join(", ")}`);
+}
+
+test("background worker scripts share a scope without duplicate bindings", () => {
+  parseCombinedSources("supported_sites.js", "shared.js", "tokenizer.js", "background_helpers.js", "background.js");
+});
+
+test("background shared helpers can be imported more than once without lexical collisions", () => {
+  parseCombinedSources("shared.js", "shared.js");
+});
+
+test("background worker parses with the real importScripts order without ONNX Runtime", () => {
+  parseCombinedSources(
+    "supported_sites.js",
+    "shared.js",
+    "background_helpers.js",
+    "background.js",
+  );
+});
+
+test("content script helpers share a scope without duplicate bindings", () => {
+  parseCombinedSources("supported_sites.js", "site_adapters.js", "content.js");
+});
+
+test("content script files tolerate a popup-triggered reinjection", () => {
+  parseCombinedSources(
+    "supported_sites.js",
+    "site_adapters.js",
+    "content.js",
+    "supported_sites.js",
+    "site_adapters.js",
+    "content.js",
+  );
+});
+
+test("background script does not reference stale helper binding names", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.ok(!source.includes("makeInitialStats("));
+  assert.ok(!source.includes("formatPredictionResults("));
+  assert.ok(!source.includes("updateStatsWithResults("));
+  assert.ok(!source.includes("createWordPieceTokenizer("));
+});
+
+test("background worker delegates ONNX inference to offscreen document", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.ok(!source.includes("ort.min.js"));
+  assert.ok(!source.includes("InferenceSession.create"));
+  assert.match(source, /chrome\.offscreen\.createDocument/);
+  assert.match(source, /toxicShield:offscreenPredict/);
+});
+
+test("background can inject content scripts when a supported active tab has not reported", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.match(source, /toxicShield:ensureContentScript/);
+  assert.match(source, /chrome\.scripting\.executeScript/);
+  assert.match(source, /chrome\.scripting\.insertCSS/);
+  assert.match(source, /supported_sites\.js/);
+  assert.match(source, /site_adapters\.js/);
+  assert.match(source, /content\.js/);
+});
+
+test("background has supported-tab injection fallbacks and returns marker diagnostics", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.match(source, /chrome\.tabs\.onUpdated\.addListener/);
+  assert.match(source, /chrome\.tabs\.onActivated\.addListener/);
+  assert.match(source, /markerPresent/);
+  assert.match(source, /injectedVersion/);
+  assert.match(source, /toxicShieldInjected/);
+});

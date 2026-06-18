@@ -1,0 +1,18 @@
+{
+  "model_name": "distilbert-base-uncased",
+  "labels": [
+    "toxic",
+    "severe_toxic",
+    "obscene",
+    "threat",
+    "insult",
+    "identity_hate"
+  ],
+  "max_length": 256,
+  "head_tokens": 200,
+  "tail_tokens": 50,
+  "loss": "asl",
+  "epochs": 3,
+  "batch_size": 8,
+  "gradient_accumulation_steps": 2
+}

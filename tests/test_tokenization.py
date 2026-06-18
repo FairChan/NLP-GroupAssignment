@@ -4,6 +4,9 @@ from src.toxic_detector.tokenization import encode_head_tail
 
 
 class MinimalTokenizer:
+    def __init__(self):
+        self.last_encode_verbose = None
+
     def encode(self, text, add_special_tokens=False):
         return [int(part) for part in text.split()]
 
@@ -35,6 +38,18 @@ class TokenizationTests(unittest.TestCase):
 
         self.assertEqual(encoded["input_ids"], [101, 1, 2, 7, 8, 102])
         self.assertEqual(encoded["attention_mask"], [1, 1, 1, 1, 1, 1])
+
+    def test_encode_head_tail_disables_tokenizer_length_warning(self):
+        class VerboseAwareTokenizer(MinimalTokenizer):
+            def encode(self, text, add_special_tokens=False, **kwargs):
+                self.last_encode_verbose = kwargs.get("verbose")
+                return super().encode(text, add_special_tokens=add_special_tokens)
+
+        tokenizer = VerboseAwareTokenizer()
+
+        encode_head_tail(tokenizer, "1 2 3 4 5 6 7 8", max_length=6)
+
+        self.assertIs(tokenizer.last_encode_verbose, False)
 
 
 if __name__ == "__main__":

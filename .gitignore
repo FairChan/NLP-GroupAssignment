@@ -10,3 +10,4 @@ data/raw/*
 !data/raw/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
+logs/

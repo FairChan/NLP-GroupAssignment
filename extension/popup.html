@@ -9,9 +9,40 @@
   <body>
     <main>
       <h1>Comment Shield</h1>
-      <p id="status">Checking local API...</p>
-      <button id="refresh" type="button">Refresh</button>
+      <p id="status">Checking offline model...</p>
+      <p id="diagnostic" class="diagnostic">Waiting for page scan...</p>
+      <dl>
+        <div>
+          <dt>Site</dt>
+          <dd id="site">Unknown</dd>
+        </div>
+        <div>
+          <dt>Scanned</dt>
+          <dd id="scanned">0</dd>
+        </div>
+        <div>
+          <dt>Blurred</dt>
+          <dd id="blocked">0</dd>
+        </div>
+        <div>
+          <dt>Marked</dt>
+          <dd id="marked">0</dd>
+        </div>
+        <div>
+          <dt>Candidates</dt>
+          <dd id="candidates">0</dd>
+        </div>
+      </dl>
+      <label class="toggle">
+        <input id="enabled" type="checkbox" checked>
+        <span>Enable on this site</span>
+      </label>
+      <div class="actions">
+        <button id="rescan" type="button">Rescan</button>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
     </main>
+    <script src="supported_sites.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
