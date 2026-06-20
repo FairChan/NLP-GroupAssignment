@@ -97,6 +97,33 @@ def quantize_onnx(onnx_path: Path, output_dir: Path) -> Path | None:
         return None
 
 
+def _load_release_gate(model_dir: Path) -> dict | None:
+    release_gate_path = model_dir / "release_gate.json"
+    if release_gate_path.exists():
+        return json.loads(release_gate_path.read_text(encoding="utf-8"))
+
+    training_config_path = model_dir / "training_config.json"
+    if training_config_path.exists():
+        training_config = json.loads(training_config_path.read_text(encoding="utf-8"))
+        gate = training_config.get("release_gate")
+        if isinstance(gate, dict):
+            return gate
+    return None
+
+
+def ensure_release_gate_allows_export(model_dir: Path, require_release_gate: bool = False) -> None:
+    if not require_release_gate:
+        return None
+
+    gate = _load_release_gate(model_dir)
+    if gate is None:
+        raise RuntimeError(f"release gate required but no gate result found for {model_dir}")
+    if not gate.get("passed", False):
+        failed_checks = gate.get("failed_checks") or [name for name, passed in gate.get("checks", {}).items() if not passed]
+        failed = ", ".join(str(item) for item in failed_checks) or "unknown"
+        raise RuntimeError(f"release gate failed for {model_dir}: {failed}")
+    return None
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export trained DistilBERT model for the browser extension.")
     parser.add_argument("--config")
@@ -104,6 +131,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="extension/model")
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--no-quantize", action="store_true")
+    parser.add_argument("--require-release-gate", action=argparse.BooleanOptionalAction, default=None)
     return parser.parse_args()
 
 
@@ -124,9 +152,14 @@ def main() -> None:
     output_dir = Path(config.get("output_dir", args.output_dir))
     max_length = int(config.get("max_length", args.max_length))
     should_quantize = bool(config.get("quantize", True)) and not args.no_quantize
+    if args.require_release_gate is None:
+        require_release_gate = bool(config.get("require_release_gate", False))
+    else:
+        require_release_gate = bool(args.require_release_gate)
     if not model_dir.exists():
         raise FileNotFoundError(f"Model directory not found: {model_dir}")
 
+    ensure_release_gate_allows_export(model_dir, require_release_gate=require_release_gate)
     update_label_mapping(model_dir)
     copy_metadata(model_dir, output_dir)
     onnx_path = export_onnx(model_dir, output_dir, max_length=max_length)

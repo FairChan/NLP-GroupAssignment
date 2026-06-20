@@ -137,6 +137,33 @@ class RetrainingPipelineTests(unittest.TestCase):
         self.assertIn("MiniLM", guide)
         self.assertIn("release gate", guide.lower())
 
+    def test_export_refuses_failed_release_gate_when_required(self):
+        from scripts.export_extension_model import ensure_release_gate_allows_export
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = Path(tmp)
+            (model_dir / "release_gate.json").write_text(
+                json.dumps({"passed": False, "failed_checks": ["macro_f1_target"]}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "release gate failed"):
+                ensure_release_gate_allows_export(model_dir, require_release_gate=True)
+
+            self.assertIsNone(ensure_release_gate_allows_export(model_dir, require_release_gate=False))
+
+            (model_dir / "release_gate.json").write_text(json.dumps({"passed": True}), encoding="utf-8")
+            self.assertIsNone(ensure_release_gate_allows_export(model_dir, require_release_gate=True))
+
+    def test_distilbert_optimization_script_restores_distilbert_route(self):
+        script = Path("scripts/train_distilbert_optimization.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("distilbert-base-uncased", script)
+        self.assertIn("--loss asl", script)
+        self.assertIn("--loss apl", script)
+        self.assertIn("artifacts\\distilbert_repro", script)
+        self.assertIn("scripts\\export_extension_model.py", script)
+        self.assertIn("--model-dir artifacts\\distilbert_repro", script)
     def test_best_teacher_selection_prefers_highest_macro_f1(self):
         from scripts.select_best_teacher import select_best_teacher
 

@@ -7,7 +7,11 @@
   "quantization": "dynamic_int8",
   "max_model_size_mb": 150,
   "max_quantized_metric_drop": 0.005,
-  "benchmark_batches": [1, 8, 16],
+  "benchmark_batches": [
+    1,
+    8,
+    16
+  ],
   "sample_texts": [
     "Thanks for the explanation, this is helpful.",
     "You are stupid and I hate you.",
@@ -17,6 +21,10 @@
   "release_gate": {
     "min_macro_f1": 0.741,
     "min_macro_improvement": 0.015,
-    "long_tail_labels": ["threat", "identity_hate"]
-  }
+    "long_tail_labels": [
+      "threat",
+      "identity_hate"
+    ]
+  },
+  "require_release_gate": true
 }

@@ -12,6 +12,11 @@
   "head_tokens": 200,
   "tail_tokens": 50,
   "loss": "asl",
+  "gamma_pos": 0.0,
+  "gamma_neg": 4.0,
+  "asl_clip": 0.05,
+  "apl_epsilon_pos": 1.0,
+  "apl_epsilon_neg": 1.0,
   "epochs": 3,
   "batch_size": 8,
   "gradient_accumulation_steps": 2
