@@ -1,8 +1,8 @@
 # Memory Summary
 
-Last compacted: 2026-06-16 21:20 中国标准时间
-Compacted by: Codex
-Archive: `.codex-memory/ARCHIVE/memory-archive-20260616-212016.md`
+Last compacted: 2026-06-20 15:29 中国标准时间
+Compacted by: codex
+Archive: `.codex-memory/ARCHIVE/memory-archive-20260620-152951.md`
 
 ## Current Summary
 
@@ -103,6 +103,10 @@ Risks:
 - #10 2026-06-16T16:43:48+08:00 codex: Fixed extension runtime smoke path and diagnostics (mem-65fa1b24c9b2)
 - #11 2026-06-16T17:51:38+08:00 codex: Added active-tab injection fallback diagnostics (mem-81f43d71c6aa)
 - #12 2026-06-16T21:20:16+08:00 Codex: Ran DistilBERT optimization experiments (mem-3df3ae18aef9)
+- #13 2026-06-16T21:20:16+08:00 Codex: Compacted memory into .codex-memory/ARCHIVE/memory-archive-20260616-212016.md. (mem-40ec69f61bae)
+- #14 2026-06-19T00:41:32+08:00 codex: Added popup scan progress and non-blocking status (mem-a4f2e8c9d019)
+- #15 2026-06-19T01:13:03+08:00 codex: Implemented high-performance retraining pipeline (mem-b8e91d0f6542)
+- #16 2026-06-20T15:29:51+08:00 codex: Optimized extension scan coalescing and cache diagnostics (mem-bf286c360cea)
 
 ## Recent Memory Commits
 
@@ -118,3 +122,7 @@ Risks:
 - #10 mem-65fa1b24c9b2 | 2026-06-16T16:43:48+08:00 | Fixed extension runtime smoke path and diagnostics
 - #11 mem-81f43d71c6aa | 2026-06-16T17:51:38+08:00 | Added active-tab injection fallback diagnostics
 - #12 mem-3df3ae18aef9 | 2026-06-16T21:20:16+08:00 | Ran DistilBERT optimization experiments
+- #13 mem-40ec69f61bae | 2026-06-16T21:20:16+08:00 | Compacted memory into .codex-memory/ARCHIVE/memory-archive-20260616-212016.md.
+- #14 mem-a4f2e8c9d019 | 2026-06-19T00:41:32+08:00 | Added popup scan progress and non-blocking status
+- #15 mem-b8e91d0f6542 | 2026-06-19T01:13:03+08:00 | Implemented high-performance retraining pipeline
+- #16 mem-bf286c360cea | 2026-06-20T15:29:51+08:00 | Optimized extension scan coalescing and cache diagnostics

@@ -14,9 +14,15 @@ if (globalThis.__toxicShieldContentLoaded) {
 }
 globalThis.__toxicShieldContentLoaded = true;
 
+const MAX_CANDIDATES_PER_SCAN = 32;
+const MAX_PREDICTION_CACHE_ENTRIES = 1500;
+const RESCAN_AFTER_BACKLOG_MS = 250;
+
 let processed = new WeakSet();
 const predictionCache = new Map();
 let scanTimer = null;
+let scanInFlight = false;
+let pendingScan = false;
 let siteEnabled = true;
 const SITE_ADAPTERS_LIB = globalThis.ToxicShieldSiteAdapters ?? {};
 let lastContentStatus = {
@@ -25,6 +31,10 @@ let lastContentStatus = {
   processed_count: 0,
   blocked_count: 0,
   marked_count: 0,
+  pending_count: 0,
+  cache_hit_count: 0,
+  cache_miss_count: 0,
+  cache_size: 0,
   adapter_id: null,
   error: null,
   updated_at: null,
@@ -75,6 +85,7 @@ function updateContentStatus(status) {
   lastContentStatus = {
     ...lastContentStatus,
     ...status,
+    cache_size: predictionCache.size,
     updated_at: new Date().toISOString(),
   };
 }
@@ -95,6 +106,13 @@ function markProcessed(candidates) {
   });
 }
 
+function trimPredictionCache() {
+  while (predictionCache.size > MAX_PREDICTION_CACHE_ENTRIES) {
+    const oldestKey = predictionCache.keys().next().value;
+    if (oldestKey === undefined) return;
+    predictionCache.delete(oldestKey);
+  }
+}
 function applyReview(node, result) {
   if (node.dataset.toxicDetectorAction) return;
   node.classList.add("toxic-detector-review");
@@ -141,8 +159,18 @@ function applyResult(candidate, result) {
 
 async function getPredictions(candidates) {
   const uncachedTexts = [];
-  candidates.forEach((candidate, index) => {
-    if (!predictionCache.has(candidate.text)) {
+  const queuedTexts = new Set();
+  let cacheHits = 0;
+  let cacheMisses = 0;
+
+  candidates.forEach((candidate) => {
+    if (predictionCache.has(candidate.text)) {
+      cacheHits += 1;
+      return;
+    }
+    cacheMisses += 1;
+    if (!queuedTexts.has(candidate.text)) {
+      queuedTexts.add(candidate.text);
       uncachedTexts.push(candidate.text);
     }
   });
@@ -155,58 +183,85 @@ async function getPredictions(candidates) {
     });
     if (payload.disabled) {
       siteEnabled = false;
-      return [];
+      return { results: [], cacheHits, cacheMisses, disabled: true };
     }
     payload.results.forEach((result, index) => {
       predictionCache.set(uncachedTexts[index], result);
     });
+    trimPredictionCache();
   }
 
-  return candidates.map((candidate) => predictionCache.get(candidate.text) || null);
+  return {
+    results: candidates.map((candidate) => predictionCache.get(candidate.text) || null),
+    cacheHits,
+    cacheMisses,
+    disabled: false,
+  };
 }
-
 async function scanPage() {
-  if (!siteEnabled) {
+  if (scanInFlight) {
+    pendingScan = true;
     await reportScan({
-      status: "disabled",
-      candidate_count: 0,
-      error: null,
-    });
-    return;
-  }
-  if (typeof SITE_ADAPTERS_LIB.collectCommentCandidates !== "function") {
-    await reportScan({
-      status: "adapter_missing",
-      candidate_count: 0,
-      adapter_id: null,
-      error: "site_adapters.js did not expose ToxicShieldSiteAdapters",
-    });
-    return;
-  }
-
-  const adapter = SITE_ADAPTERS_LIB.getAdapterForHostname?.(window.location.hostname);
-  const adapterId = adapter?.id || "unknown";
-  const candidates = SITE_ADAPTERS_LIB.collectCommentCandidates(document, window.location.hostname, processed);
-  if (!candidates.length) {
-    await reportScan({
-      status: lastContentStatus.status === "scanned" ? "idle" : "no_candidates",
-      candidate_count: 0,
-      processed_count: 0,
-      blocked_count: 0,
-      marked_count: 0,
-      adapter_id: adapterId,
+      status: "queued",
+      candidate_count: lastContentStatus.candidate_count || 0,
+      pending_count: lastContentStatus.pending_count || 0,
+      adapter_id: lastContentStatus.adapter_id,
       error: null,
     });
     return;
   }
 
+  scanInFlight = true;
+  let shouldScheduleAgain = false;
   try {
+    if (!siteEnabled) {
+      await reportScan({
+        status: "disabled",
+        candidate_count: 0,
+        pending_count: 0,
+        error: null,
+      });
+      return;
+    }
+    if (typeof SITE_ADAPTERS_LIB.collectCommentCandidates !== "function") {
+      await reportScan({
+        status: "adapter_missing",
+        candidate_count: 0,
+        pending_count: 0,
+        adapter_id: null,
+        error: "site_adapters.js did not expose ToxicShieldSiteAdapters",
+      });
+      return;
+    }
+
+    const adapter = SITE_ADAPTERS_LIB.getAdapterForHostname?.(window.location.hostname);
+    const adapterId = adapter?.id || "unknown";
+    const collectedCandidates = SITE_ADAPTERS_LIB.collectCommentCandidates(document, window.location.hostname, processed);
+    const candidates = collectedCandidates.slice(0, MAX_CANDIDATES_PER_SCAN);
+    const pendingCount = Math.max(0, collectedCandidates.length - candidates.length);
+    shouldScheduleAgain = pendingCount > 0;
+
+    if (!candidates.length) {
+      await reportScan({
+        status: lastContentStatus.status === "scanned" ? "idle" : "no_candidates",
+        candidate_count: 0,
+        processed_count: 0,
+        blocked_count: 0,
+        marked_count: 0,
+        pending_count: 0,
+        adapter_id: adapterId,
+        error: null,
+      });
+      return;
+    }
+
     await reportScan({
       status: "collecting_done",
       candidate_count: candidates.length,
       processed_count: 0,
       blocked_count: 0,
       marked_count: 0,
+      pending_count: pendingCount,
       adapter_id: adapterId,
       error: null,
     });
@@ -216,57 +271,85 @@ async function scanPage() {
       processed_count: 0,
       blocked_count: 0,
       marked_count: 0,
+      pending_count: pendingCount,
       adapter_id: adapterId,
       error: null,
     });
-    const results = await getPredictions(candidates);
+
+    const predictionPayload = await getPredictions(candidates);
+    if (predictionPayload.disabled) return;
+
+    const { results, cacheHits, cacheMisses } = predictionPayload;
     let blockedCount = 0;
     let markedCount = 0;
+    const predictedCandidates = [];
     results.forEach((result, index) => {
       const candidate = candidates[index];
       if (candidate && result) {
+        predictedCandidates.push(candidate);
         if (result.action === "block") blockedCount += 1;
         if (result.action === "review") markedCount += 1;
         applyResult(candidate, result);
       }
     });
-    markProcessed(candidates);
+    markProcessed(predictedCandidates);
     await reportScan({
       status: "scanned",
       candidate_count: candidates.length,
       processed_count: results.filter(Boolean).length,
       blocked_count: blockedCount,
       marked_count: markedCount,
+      pending_count: pendingCount,
+      cache_hit_count: cacheHits,
+      cache_miss_count: cacheMisses,
       adapter_id: adapterId,
       error: null,
     });
   } catch (error) {
     await reportScan({
       status: "prediction_error",
-      candidate_count: candidates.length,
+      candidate_count: lastContentStatus.candidate_count || 0,
       processed_count: 0,
       blocked_count: 0,
       marked_count: 0,
-      adapter_id: adapterId,
+      pending_count: lastContentStatus.pending_count || 0,
+      adapter_id: lastContentStatus.adapter_id,
       error: error.message,
     });
     console.debug("Toxic Shield unavailable:", error.message);
+  } finally {
+    scanInFlight = false;
+    if (pendingScan || shouldScheduleAgain) {
+      pendingScan = false;
+      window.clearTimeout(scanTimer);
+      scanTimer = window.setTimeout(scanPage, RESCAN_AFTER_BACKLOG_MS);
+    }
   }
 }
 
 function scheduleScan() {
-  window.clearTimeout(scanTimer);
-  if (lastContentStatus.status !== "predicting") {
+  if (scanInFlight) {
+    pendingScan = true;
     reportScan({
-      status: "scheduled",
+      status: "queued",
       candidate_count: lastContentStatus.candidate_count || 0,
+      pending_count: lastContentStatus.pending_count || 0,
       adapter_id: lastContentStatus.adapter_id,
       error: null,
     });
+    return;
   }
+
+  window.clearTimeout(scanTimer);
+  reportScan({
+    status: "scheduled",
+    candidate_count: lastContentStatus.candidate_count || 0,
+    pending_count: lastContentStatus.pending_count || 0,
+    adapter_id: lastContentStatus.adapter_id,
+    error: null,
+  });
   scanTimer = window.setTimeout(scanPage, 700);
 }
-
 async function refreshSiteStatus() {
   try {
     const status = await sendMessage({ type: "toxicShield:getStatus" });
@@ -280,6 +363,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "toxicShield:rescan") {
     processed = new WeakSet();
     predictionCache.clear();
+    pendingScan = false;
     siteEnabled = true;
     sendMessage({ type: "toxicShield:resetStats" }).finally(scheduleScan);
     sendResponse({ ok: true });
@@ -295,6 +379,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     siteEnabled = message.enabled !== false;
     if (siteEnabled) {
       processed = new WeakSet();
+      pendingScan = true;
       scheduleScan();
     }
     sendResponse({ ok: true });
@@ -306,6 +391,7 @@ globalThis.__toxicShieldScheduleScan = scheduleScan;
 reportScan({
   status: "injected",
   candidate_count: 0,
+  pending_count: 0,
   adapter_id: null,
   error: null,
 });

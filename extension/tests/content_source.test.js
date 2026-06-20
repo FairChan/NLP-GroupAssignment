@@ -59,3 +59,27 @@ test("popup renders cached quick status before polling slower status", () => {
   assert.ok(firstFullStatus >= 0, "popup must still support full status refresh");
   assert.ok(firstQuickStatus < firstFullStatus, "quick status should be requested before full status");
 });
+test("content script coalesces scan storms and reports cache efficiency", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
+
+  assert.match(source, /scanInFlight/);
+  assert.match(source, /pendingScan/);
+  assert.match(source, /MAX_CANDIDATES_PER_SCAN/);
+  assert.match(source, /MAX_PREDICTION_CACHE_ENTRIES/);
+  assert.match(source, /status:\s*"queued"/);
+  assert.match(source, /cache_hit_count/);
+  assert.match(source, /cache_miss_count/);
+  assert.match(source, /pending_count/);
+  assert.match(source, /trimPredictionCache/);
+  assert.match(source, /markProcessed\(predictedCandidates\)/);
+});
+test("popup surfaces cache and queue diagnostics", () => {
+  const popupHtml = fs.readFileSync(path.join(__dirname, "..", "popup.html"), "utf8");
+  const popupSource = fs.readFileSync(path.join(__dirname, "..", "popup.js"), "utf8");
+
+  assert.match(popupHtml, /id="cache"/);
+  assert.match(popupSource, /cacheEl/);
+  assert.match(popupSource, /cache_hit_count/);
+  assert.match(popupSource, /cache_miss_count/);
+  assert.match(popupSource, /pending_count/);
+});

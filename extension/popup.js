@@ -7,6 +7,7 @@ const scannedEl = document.getElementById("scanned");
 const blockedEl = document.getElementById("blocked");
 const markedEl = document.getElementById("marked");
 const candidatesEl = document.getElementById("candidates");
+const cacheEl = document.getElementById("cache");
 const diagnosticEl = document.getElementById("diagnostic");
 const modelProgressEl = document.getElementById("modelProgress");
 const scannerProgressEl = document.getElementById("scannerProgress");
@@ -137,6 +138,7 @@ function scannerProgressText(payload, contentStatus) {
   const processedCount = Number(contentStatus?.processed_count ?? stats.lastProcessedCount ?? 0);
   if (status === "collecting_done") return `Collected ${candidateCount} candidate comment(s).`;
   if (status === "predicting") return `Predicting ${candidateCount} candidate comment(s).`;
+  if (status === "queued") return `Scan queued; ${Number(contentStatus?.pending_count ?? stats.lastPendingCount ?? 0)} candidate(s) pending.`;
   if (status === "scanned") return `Processed ${processedCount || candidateCount} candidate comment(s).`;
   if (status === "scheduled") return "Scan scheduled.";
   if (status === "no_candidates") return "No visible candidates yet.";
@@ -168,6 +170,7 @@ function diagnosticText(payload, contentStatus, activeTabInfo, injectionError) {
   if (status === "starting") return "Scanner is starting on this page...";
   if (status === "injected") return "Scanner injected. Waiting for the first scan to start...";
   if (status === "scheduled") return "Scanner scheduled. Waiting for visible comment candidates...";
+  if (status === "queued") return `Another scan is running; ${Number(contentStatus?.pending_count ?? stats.lastPendingCount ?? 0)} candidate(s) pending.`;
   if (status === "collecting_done") return `Collected ${candidateCount} candidate comment(s). Waiting for local model inference...`;
   if (status === "adapter_missing") return "Scanner adapter failed to load on this page.";
   if (status === "no_candidates") return "No visible comment candidates found yet. Scroll to the comment area and rescan.";
@@ -194,6 +197,10 @@ function renderStatus(payload, contentStatus, activeTabInfo, injectionError) {
   blockedEl.textContent = String(payload.stats?.blocked || 0);
   markedEl.textContent = String(payload.stats?.marked || 0);
   candidatesEl.textContent = String(contentStatus?.candidate_count ?? payload.stats?.lastCandidateCount ?? 0);
+  const cacheHits = Number(contentStatus?.cache_hit_count ?? payload.stats?.lastCacheHitCount ?? 0);
+  const cacheMisses = Number(contentStatus?.cache_miss_count ?? payload.stats?.lastCacheMissCount ?? 0);
+  const pendingCount = Number(contentStatus?.pending_count ?? payload.stats?.lastPendingCount ?? 0);
+  cacheEl.textContent = `${cacheHits} hit / ${cacheMisses} new${pendingCount ? ` / ${pendingCount} queued` : ""}`;
   diagnosticEl.textContent = diagnosticText(payload, contentStatus, activeTabInfo, injectionError);
   renderProgress(payload, contentStatus);
 }

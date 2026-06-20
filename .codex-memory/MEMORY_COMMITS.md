@@ -461,3 +461,49 @@ Related files:
 - src/toxic_detector/train_teacher.py
 - src/toxic_detector/distill_student.py
 - tests/test_retraining_pipeline.py
+
+## mem-bf286c360cea - 2026-06-20 15:29 中国标准时间
+
+Memory number: 16
+Actor: codex
+Thread: codex-extension-chain-optimization
+Purpose: work
+Branch: codex/high-performance-retraining
+Git commit: ce164f1
+
+Summary:
+- Optimized extension scan coalescing and cache diagnostics
+
+Changed memory locations:
+- .codex-memory/THREADS/codex-extension-chain-optimization.md entry #1 lines 2-31 2026-06-20 15:29 中国标准时间 - Optimized extension scan coalescing and cache diagnostics
+- .codex-memory/TASK_LOG.md entry #14 lines 414-438 2026-06-20 15:29 中国标准时间 - codex / codex-extension-chain-optimization
+- .codex-memory/HANDOFF.md entry #15 lines 510-539 Optimized extension scan coalescing and cache diagnostics
+- .codex-memory/CURRENT_WORK.md entry #16 lines 509-538 Optimized extension scan coalescing and cache diagnostics
+
+Related files:
+- extension/content.js
+- extension/background_helpers.js
+- extension/popup.html
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/content_source.test.js
+
+## mem-d5612d123c42 - 2026-06-20 15:29 中国标准时间
+
+Memory number: 17
+Actor: codex
+Thread: codex-extension-chain-optimization
+Purpose: compact
+Branch: codex/high-performance-retraining
+Git commit: ce164f1
+
+Summary:
+- Compacted memory into .codex-memory/ARCHIVE/memory-archive-20260620-152951.md.
+
+Changed memory locations:
+- .codex-memory/SUMMARY.md entry #6 lines 121-248 Memory Summary
+- .codex-memory/ARCHIVE/memory-archive-20260620-152951.md entry #1 lines 1-2085 Memory Archive 2026-06-20 15:29 中国标准时间
+
+Related files:
+- .codex-memory/ARCHIVE/memory-archive-20260620-152951.md
+- .codex-memory/SUMMARY.md

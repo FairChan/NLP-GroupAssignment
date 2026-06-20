@@ -411,3 +411,28 @@ Risks:
 
 Next:
 - Run `.\scripts\train_high_performance.ps1` after installing updated requirements; publish only if release gate passes.
+
+
+## 2026-06-20 15:29 中国标准时间 - codex / codex-extension-chain-optimization
+
+Branch: codex/high-performance-retraining
+
+Changed:
+- Optimized extension scan coalescing and cache diagnostics
+
+Files:
+- extension/content.js
+- extension/background_helpers.js
+- extension/popup.html
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/content_source.test.js
+
+Tests:
+- node --test extension\\tests\\*.test.js passed 43 tests; node --check extension scripts passed; python -m unittest discover -s tests -v passed 18 tests with KMP_DUPLICATE_LIB_OK=TRUE; python -m compileall src scripts tests passed; verify_extension_model.py passed with max abs diff 0.000002; git diff --check passed with LF-to-CRLF warnings only
+
+Risks:
+- Manual Chrome reload is still needed to pick up the changed unpacked extension. This change improves frontend/link performance only; model accuracy remains the stable DistilBERT baseline.
+
+Next:
+- Reload the unpacked extension, refresh a busy social page, and verify the popup shows cache and queued counts while comments continue scanning.
