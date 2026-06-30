@@ -21,17 +21,17 @@ Chrome/Edge Manifest V3 extension for offline English toxic-comment moderation.
 6. Refresh the social-media page so the content script and background worker use the new version.
 7. Open a supported public social-media page: YouTube, X/Twitter, Reddit, Facebook, Instagram, Threads, TikTok, LinkedIn, Bluesky, Twitch, Tumblr, Pinterest, Quora, Medium, Stack Exchange, Bilibili, Weibo, Zhihu, Xiaohongshu, or common Mastodon instances.
 
-The model loads in a hidden extension document on the first scan. The first scan can take several seconds because `model.onnx` is about 268 MB.
+The model loads in a hidden extension document on the first real scan. To keep the popup responsive, the extension first renders cached status, delays idle model preload briefly, and defers the first automatic scan by a short moment after page injection. The first model-backed scan can still take several seconds because the stable DistilBERT `model.onnx` is about 268 MB, but opening the popup should show cached status and progress immediately instead of looking frozen.
 
 ## Troubleshooting A Page That Stays At Zero
 
 After reloading the unpacked extension, refresh the social-media tab. On a supported page, the content script writes a hidden diagnostic marker to the page root:
 
 ```text
-data-toxic-shield-injected="0.3.1"
+data-toxic-shield-injected="0.3.2"
 ```
 
-If that marker is missing, open the extension popup on the social-media tab. Version `0.3.1` retries content-script injection on supported tab load/activation and from the popup, then reports `markerPresent`, `injectedVersion`, and any injection error in the diagnostic panel. If the popup reports an injection failure, check that the unpacked extension path is exactly `C:\Users\ssema\Desktop\nlpga\extension`, the version is `0.3.1`, and site access is allowed for the current host, then refresh the page again.
+If that marker is missing, open the extension popup on the social-media tab. Version `0.3.2` retries content-script injection on supported tab load/activation and from the popup, then reports `markerPresent`, `injectedVersion`, and any injection error in the diagnostic panel. If the popup reports an injection failure, check that the unpacked extension path is exactly `C:\Users\ssema\Desktop\nlpga\extension`, the version is `0.3.2`, and site access is allowed for the current host, then refresh the page again.
 
 If the marker exists but comments are still not hidden, open the popup and check the progress panel. The popup renders cached status first, then updates `Model`, `Scanner`, and `Progress` while the hidden offscreen page loads tokenizer/model assets or runs ONNX batches. `injected`, `scheduled`, `collecting_done`, and `predicting` are transient first-scan states; wait for them to settle before treating the count as final. `prediction_error` or `Model error` points to the offscreen ONNX runtime path; `no_candidates` means the page needs to be scrolled to a visible comment area or the site adapter needs updating.
 

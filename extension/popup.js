@@ -199,8 +199,11 @@ function renderStatus(payload, contentStatus, activeTabInfo, injectionError) {
   candidatesEl.textContent = String(contentStatus?.candidate_count ?? payload.stats?.lastCandidateCount ?? 0);
   const cacheHits = Number(contentStatus?.cache_hit_count ?? payload.stats?.lastCacheHitCount ?? 0);
   const cacheMisses = Number(contentStatus?.cache_miss_count ?? payload.stats?.lastCacheMissCount ?? 0);
+  const fastAllows = Number(contentStatus?.fast_allow_count ?? payload.stats?.lastFastAllowCount ?? 0);
   const pendingCount = Number(contentStatus?.pending_count ?? payload.stats?.lastPendingCount ?? 0);
-  cacheEl.textContent = `${cacheHits} hit / ${cacheMisses} new${pendingCount ? ` / ${pendingCount} queued` : ""}`;
+  cacheEl.textContent = `${cacheHits} hit / ${cacheMisses} new${
+    fastAllows ? ` / ${fastAllows} fast` : ""
+  }${pendingCount ? ` / ${pendingCount} queued` : ""}`;
   diagnosticEl.textContent = diagnosticText(payload, contentStatus, activeTabInfo, injectionError);
   renderProgress(payload, contentStatus);
 }
@@ -282,6 +285,14 @@ function startStatusPolling() {
   statusPollTimer = window.setInterval(refreshCachedStatus, POPUP_STATUS_POLL_MS);
 }
 
+async function initializePopup() {
+  await renderQuickStatus().catch((error) => {
+    diagnosticEl.textContent = error.message;
+  });
+  window.setTimeout(refreshStatus, 0);
+  startStatusPolling();
+}
+
 refreshButton.addEventListener("click", refreshStatus);
 rescanButton.addEventListener("click", async () => {
   if (activeTab?.id) {
@@ -302,5 +313,4 @@ enabledInput.addEventListener("change", async () => {
   refreshStatus();
 });
 
-refreshStatus();
-startStatusPolling();
+initializePopup();

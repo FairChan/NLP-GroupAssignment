@@ -103,6 +103,7 @@ test("background helpers retain queue and cache scan diagnostics", () => {
     pending_count: 12,
     cache_hit_count: 9,
     cache_miss_count: 23,
+    fast_allow_count: 2,
   });
 
   assert.equal(stats.lastScanStatus, "queued");
@@ -110,4 +111,5 @@ test("background helpers retain queue and cache scan diagnostics", () => {
   assert.equal(stats.lastPendingCount, 12);
   assert.equal(stats.lastCacheHitCount, 9);
   assert.equal(stats.lastCacheMissCount, 23);
+  assert.equal(stats.lastFastAllowCount, 2);
 });
