@@ -32,7 +32,7 @@
     "toxigen_csv": "data/aux/toxigen_weak.csv"
   },
   "release_gate": {
-    "baseline_model_dir": "artifacts/distilbert",
+    "baseline_model_dir": "artifacts/distilbert_repro",
     "min_macro_f1": 0.741,
     "min_macro_improvement": 0.015,
     "long_tail_labels": ["threat", "identity_hate"]

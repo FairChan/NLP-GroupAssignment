@@ -537,3 +537,52 @@ Risks:
 
 Next:
 - Reload the unpacked extension, refresh a busy social page, and verify the popup shows cache and queued counts while comments continue scanning.
+
+
+## Implemented speed-first lightweight model and extension fast path
+
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+
+Summary:
+- Implemented speed-first lightweight model and extension fast path
+
+Details:
+  Added MiniLM-L6 and TinyBERT student candidates, speed-first release gates, safe candidate export paths, and frontend/offscreen runtime acceleration. All high-performance configs now compare against `artifacts/distilbert_repro`, which matches the current extension ONNX. The stable DistilBERT plugin model was not replaced.
+
+Files touched:
+- configs/export_int8.json
+- configs/student_minilm_l6_distill.json
+- configs/student_tinybert_distill.json
+- configs/student_minilm_distill.json
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- docs/retraining_guide.md
+- scripts/benchmark_extension_model.py
+- scripts/train_high_performance.ps1
+- src/toxic_detector/retraining.py
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+- tests/test_retraining_pipeline.py
+
+Tests:
+- node --test extension\\tests\\*.test.js passed 46 tests
+- node --check extension\\supported_sites.js extension\\background.js extension\\content.js extension\\popup.js extension\\shared.js extension\\tokenizer.js extension\\background_helpers.js extension\\site_adapters.js extension\\offscreen_inference.js passed
+- python -m unittest discover -s tests -v passed 26 tests with KMP_DUPLICATE_LIB_OK=TRUE
+- python -m compileall src scripts tests passed
+- scripts\\verify_extension_model.py --model-dir artifacts\\distilbert_repro --onnx-path extension\\model\\model.onnx passed with max abs diff 0.000002
+- git diff --check passed with Windows LF-to-CRLF warnings only
+
+Risks:
+- Full retraining was not run. New lightweight candidates still need actual training, benchmark, bias checks, and Chrome smoke testing before replacing the plugin model.
+
+Next:
+- Run `.\scripts\train_high_performance.ps1 -Target speed`, inspect gate outputs, and only then promote a candidate to `extension\model`.

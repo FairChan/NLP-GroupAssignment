@@ -31,6 +31,15 @@ def _model_path(output_dir: Path) -> Path:
     return output_dir / "model.onnx"
 
 
+def _model_path_from_config(value: str | Path | None) -> Path | None:
+    if not value:
+        return None
+    path = Path(value)
+    if path.is_dir():
+        return _model_path(path)
+    return path
+
+
 def _measure_onnx_latency(onnx_path: Path, batches: list[int], max_length: int, repeats: int = 5) -> dict[int, float]:
     try:
         import onnxruntime as ort
@@ -61,24 +70,37 @@ def run_benchmark(config: dict, candidate_metrics_path: str | None = None, basel
 
     candidate_metrics = _load_json_if_exists(candidate_metrics_path or Path(config.get("model_dir", "")) / "metrics.json")
     baseline_metrics = _load_json_if_exists(
-        baseline_metrics_path or Path(config.get("baseline_model_dir", "artifacts/distilbert")) / "metrics.json"
+        baseline_metrics_path or Path(config.get("baseline_model_dir", "artifacts/distilbert_repro")) / "metrics.json"
     )
     latencies = _measure_onnx_latency(
         onnx_path,
         [int(batch) for batch in config.get("benchmark_batches", [1, 8, 16])],
         int(config.get("max_length", 256)),
     )
+    speed_gate = config.get("speed_gate", {})
+    baseline_onnx_path = _model_path_from_config(
+        speed_gate.get("baseline_onnx_path") or config.get("baseline_onnx_path")
+    )
+    baseline_latencies = {}
+    if baseline_onnx_path and baseline_onnx_path.exists() and baseline_onnx_path.resolve() != onnx_path.resolve():
+        baseline_latencies = _measure_onnx_latency(
+            baseline_onnx_path,
+            [int(batch) for batch in config.get("benchmark_batches", [1, 8, 16])],
+            int(speed_gate.get("baseline_max_length", config.get("baseline_max_length", config.get("max_length", 256)))),
+        )
     summary = build_benchmark_summary(
         model_name=str(config.get("model_dir", "candidate")),
         onnx_path=onnx_path,
         model_size_bytes=onnx_path.stat().st_size,
         latency_ms_by_batch=latencies,
+        baseline_latency_ms_by_batch=baseline_latencies,
         parity_max_abs_diff=config.get("parity_max_abs_diff"),
         candidate_metrics=candidate_metrics,
         baseline_metrics=baseline_metrics,
         max_model_size_mb=float(config.get("max_model_size_mb", 150)),
         max_quantized_metric_drop=float(config.get("max_quantized_metric_drop", 0.005)),
         min_macro_improvement=float(config.get("release_gate", {}).get("min_macro_improvement", 0.015)),
+        speed_gate=speed_gate,
     )
     report_path = PROJECT_ROOT / "artifacts" / "model_cards" / "retrain_report.md"
     write_retrain_report(report_path, [summary])

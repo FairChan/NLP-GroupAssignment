@@ -436,3 +436,47 @@ Risks:
 
 Next:
 - Reload the unpacked extension, refresh a busy social page, and verify the popup shows cache and queued counts while comments continue scanning.
+
+
+## 2026-06-30 12:55 中国标准时间 - codex / high-performance-retraining
+
+Branch: codex/high-performance-retraining
+
+Changed:
+- Implemented speed-first lightweight model and extension fast path
+
+Files:
+- configs/export_int8.json
+- configs/student_minilm_l6_distill.json
+- configs/student_tinybert_distill.json
+- configs/student_minilm_distill.json
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- docs/retraining_guide.md
+- scripts/benchmark_extension_model.py
+- scripts/train_high_performance.ps1
+- src/toxic_detector/retraining.py
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+- tests/test_retraining_pipeline.py
+
+Tests:
+- node --test extension\\tests\\*.test.js passed 46 tests
+- node --check extension scripts passed
+- python -m unittest discover -s tests -v passed 26 tests
+- python -m compileall src scripts tests passed
+- verify_extension_model.py against artifacts\\distilbert_repro passed with max abs diff 0.000002
+- git diff --check passed with Windows LF-to-CRLF warnings only
+
+Risks:
+- Full speed-first retraining was not run; current extension model remains stable DistilBERT.
+
+Next:
+- Run speed-first training and benchmark gates before promoting a candidate model.

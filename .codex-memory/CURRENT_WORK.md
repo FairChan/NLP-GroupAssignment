@@ -536,3 +536,51 @@ Risks:
 
 Next:
 - Reload the unpacked extension, refresh a busy social page, and verify the popup shows cache and queued counts while comments continue scanning.
+
+
+## Implemented speed-first lightweight model and extension fast path
+
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+
+Summary:
+- Implemented speed-first lightweight model and extension fast path
+
+Details:
+  Added MiniLM-L6 and TinyBERT speed-first student configs, benchmark speed gates against the stable DistilBERT extension ONNX, and runtime optimizations for quick local classification. The default export path now writes to `artifacts/extension_candidates/student_minilm_l6_int8` so the stable plugin model is not overwritten before gates pass.
+
+Files touched:
+- configs/export_int8.json
+- configs/student_minilm_l6_distill.json
+- configs/student_tinybert_distill.json
+- configs/student_minilm_distill.json
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- docs/retraining_guide.md
+- scripts/benchmark_extension_model.py
+- scripts/train_high_performance.ps1
+- src/toxic_detector/retraining.py
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+- tests/test_retraining_pipeline.py
+
+Tests:
+- node --test extension\\tests\\*.test.js passed 46 tests
+- node --check extension scripts passed
+- python -m unittest discover -s tests -v passed 26 tests
+- python -m compileall src scripts tests passed
+- verify_extension_model.py against artifacts\\distilbert_repro passed with max abs diff 0.000002
+
+Risks:
+- Full retraining and real Chrome smoke test are still pending.
+
+Next:
+- Train with `.\scripts\train_high_performance.ps1 -Target speed`, then promote a candidate only if all gates pass.

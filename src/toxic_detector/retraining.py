@@ -137,37 +137,79 @@ def build_benchmark_summary(
     onnx_path: str | Path,
     model_size_bytes: int,
     latency_ms_by_batch: dict[int, float],
-    parity_max_abs_diff: float | None,
-    candidate_metrics: dict[str, Any],
-    baseline_metrics: dict[str, Any],
+    baseline_latency_ms_by_batch: dict[int, float] | None = None,
+    parity_max_abs_diff: float | None = None,
+    candidate_metrics: dict[str, Any] | None = None,
+    baseline_metrics: dict[str, Any] | None = None,
     max_model_size_mb: float = 150.0,
     max_quantized_metric_drop: float = 0.005,
     min_macro_improvement: float = 0.015,
+    speed_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     model_size_mb = round(float(model_size_bytes) / (1024 * 1024), 3)
     accuracy_gate = evaluate_release_gate(
-        candidate_metrics,
-        baseline_metrics,
+        candidate_metrics or {},
+        baseline_metrics or {},
         min_macro_improvement=min_macro_improvement,
     )
+    candidate_latencies = {int(batch): float(latency) for batch, latency in latency_ms_by_batch.items()}
+    baseline_latencies = {
+        int(batch): float(latency) for batch, latency in (baseline_latency_ms_by_batch or {}).items()
+    }
+    speedups: dict[int, float] = {}
+    for batch, candidate_latency in candidate_latencies.items():
+        baseline_latency = baseline_latencies.get(batch)
+        if baseline_latency and candidate_latency > 0:
+            speedups[batch] = round(baseline_latency / candidate_latency, 4)
+
     checks = {
         **accuracy_gate["checks"],
         "model_size_within_budget": model_size_mb <= float(max_model_size_mb),
     }
     if parity_max_abs_diff is not None:
         checks["onnx_parity_within_budget"] = float(parity_max_abs_diff) <= float(max_quantized_metric_drop)
+    speed_gate = speed_gate or {}
+    batch1_candidate = candidate_latencies.get(1)
+    batch1_baseline = baseline_latencies.get(1)
+    if speed_gate.get("require_batch1_speedup"):
+        checks["batch1_latency_faster_than_baseline"] = (
+            batch1_candidate is not None and batch1_baseline is not None and batch1_candidate < batch1_baseline
+        )
+        checks["batch1_speedup_target"] = speedups.get(1, 0.0) >= float(speed_gate.get("min_batch1_speedup", 1.0))
+    if speed_gate.get("max_batch1_latency_ms") is not None:
+        checks["batch1_latency_within_budget"] = (
+            batch1_candidate is not None and batch1_candidate <= float(speed_gate["max_batch1_latency_ms"])
+        )
+    for batch, max_latency in (speed_gate.get("max_latency_ms_by_batch") or {}).items():
+        batch_int = int(batch)
+        checks[f"batch{batch_int}_latency_within_budget"] = (
+            candidate_latencies.get(batch_int) is not None
+            and candidate_latencies[batch_int] <= float(max_latency)
+        )
+
     failed_checks = [name for name, passed in checks.items() if not passed]
+    details = {
+        **accuracy_gate["details"],
+        "candidate_batch1_latency_ms": batch1_candidate,
+        "baseline_batch1_latency_ms": batch1_baseline,
+        "batch1_speedup": speedups.get(1),
+        "min_batch1_speedup": speed_gate.get("min_batch1_speedup"),
+    }
     return {
         "model_name": model_name,
         "onnx_path": str(onnx_path),
         "model_size_mb": model_size_mb,
-        "latency_ms_by_batch": {str(batch): float(latency) for batch, latency in sorted(latency_ms_by_batch.items())},
+        "latency_ms_by_batch": {str(batch): float(latency) for batch, latency in sorted(candidate_latencies.items())},
+        "baseline_latency_ms_by_batch": {
+            str(batch): float(latency) for batch, latency in sorted(baseline_latencies.items())
+        },
+        "speedup_by_batch": {str(batch): float(speedup) for batch, speedup in sorted(speedups.items())},
         "parity_max_abs_diff": None if parity_max_abs_diff is None else float(parity_max_abs_diff),
         "release_gate": {
             "passed": not failed_checks,
             "checks": checks,
             "failed_checks": failed_checks,
-            "details": accuracy_gate["details"],
+            "details": details,
         },
     }
 

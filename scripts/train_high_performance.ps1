@@ -2,7 +2,9 @@ param(
     [string]$Python = "$env:USERPROFILE\.conda\envs\toxic-nlp\python.exe",
     [switch]$SkipTeachers,
     [switch]$SkipStudent,
-    [switch]$SkipExport
+    [switch]$SkipExport,
+    [ValidateSet("balanced", "speed")]
+    [string]$Target = "speed"
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,8 +49,16 @@ if (-not $SkipStudent) {
             --output-dir artifacts\teacher_best
     }
 
-    Write-Host "Distilling MiniLM student from selected teacher..."
-    & $Python -m src.toxic_detector.distill_student --config configs\student_minilm_distill.json
+    if ($Target -eq "speed") {
+        Write-Host "Distilling speed-first MiniLM-L6 student from selected teacher..."
+        & $Python -m src.toxic_detector.distill_student --config configs\student_minilm_l6_distill.json
+
+        Write-Host "Distilling speed-first TinyBERT student from selected teacher..."
+        & $Python -m src.toxic_detector.distill_student --config configs\student_tinybert_distill.json
+    } else {
+        Write-Host "Distilling balanced MiniLM-L12 student from selected teacher..."
+        & $Python -m src.toxic_detector.distill_student --config configs\student_minilm_distill.json
+    }
 }
 
 if (-not $SkipExport) {
@@ -59,4 +69,4 @@ if (-not $SkipExport) {
     & $Python scripts\benchmark_extension_model.py --config configs\export_int8.json
 }
 
-Write-Host "High-performance retraining pipeline finished. Check artifacts\model_cards\retrain_report.md and release_gate.json before replacing the extension model."
+Write-Host "High-performance retraining pipeline finished. Check artifacts\model_cards\retrain_report.md, artifacts\model_cards\extension_benchmark.json, and release_gate.json before promoting any candidate into extension\model."

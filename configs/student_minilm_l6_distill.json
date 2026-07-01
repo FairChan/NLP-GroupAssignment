@@ -1,22 +1,23 @@
 {
   "data_path": "data/raw/train.csv",
   "teacher_dir": "artifacts/teacher_best",
-  "output_dir": "artifacts/student_minilm_distilled",
-  "model_name": "microsoft/MiniLM-L12-H384-uncased",
+  "output_dir": "artifacts/student_minilm_l6_distilled",
+  "model_name": "nreimers/MiniLM-L6-H384-uncased",
   "labels": ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"],
-  "max_length": 256,
-  "head_tokens": 200,
-  "tail_tokens": 50,
-  "batch_size": 8,
-  "eval_batch_size": 16,
+  "max_length": 192,
+  "max_length_ab": [128, 192, 256],
+  "head_tokens": 150,
+  "tail_tokens": 40,
+  "batch_size": 12,
+  "eval_batch_size": 24,
   "gradient_accumulation_steps": 2,
   "epochs": 4,
-  "lr": 0.00003,
+  "lr": 0.00004,
   "weight_decay": 0.01,
   "warmup_ratio": 0.06,
   "supervised_loss": "asl",
-  "distillation_alpha": 0.4,
-  "temperature": 2.0,
+  "distillation_alpha": 0.45,
+  "temperature": 2.5,
   "asymmetric_loss": {
     "gamma_pos": 0.0,
     "gamma_neg": 4.0,
@@ -31,8 +32,10 @@
   },
   "release_gate": {
     "baseline_model_dir": "artifacts/distilbert_repro",
-    "min_macro_f1": 0.741,
-    "min_macro_improvement": 0.015,
-    "long_tail_labels": ["threat", "identity_hate"]
+    "min_macro_f1": 0.726,
+    "min_macro_improvement": 0.0,
+    "long_tail_labels": ["threat", "identity_hate"],
+    "max_model_size_mb": 120,
+    "speed_first": true
   }
 }

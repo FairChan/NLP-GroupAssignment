@@ -507,3 +507,43 @@ Changed memory locations:
 Related files:
 - .codex-memory/ARCHIVE/memory-archive-20260620-152951.md
 - .codex-memory/SUMMARY.md
+
+## mem-speed-first-20260630 - 2026-06-30 12:55 中国标准时间
+
+Memory number: 18
+Actor: codex
+Thread: high-performance-retraining
+Purpose: work
+Branch: codex/high-performance-retraining
+Git commit: 9e38d22
+
+Summary:
+- Implemented speed-first lightweight model and extension fast path
+
+Changed memory locations:
+- .codex-memory/THREADS/high-performance-retraining.md entry #2 2026-06-30 12:55 中国标准时间 - Implemented speed-first lightweight model and extension fast path
+- .codex-memory/TASK_LOG.md entry #15 2026-06-30 12:55 中国标准时间 - codex / high-performance-retraining
+- .codex-memory/HANDOFF.md entry #16 Implemented speed-first lightweight model and extension fast path
+- .codex-memory/CURRENT_WORK.md entry #17 Implemented speed-first lightweight model and extension fast path
+
+Related files:
+- configs/export_int8.json
+- configs/student_minilm_l6_distill.json
+- configs/student_tinybert_distill.json
+- configs/student_minilm_distill.json
+- configs/teacher_modernbert.json
+- configs/teacher_deberta_v3.json
+- docs/retraining_guide.md
+- scripts/benchmark_extension_model.py
+- scripts/train_high_performance.ps1
+- src/toxic_detector/retraining.py
+- extension/background.js
+- extension/background_helpers.js
+- extension/content.js
+- extension/offscreen_inference.js
+- extension/popup.js
+- extension/tests/background_helpers.test.js
+- extension/tests/background_source.test.js
+- extension/tests/content_source.test.js
+- extension/tests/offscreen_source.test.js
+- tests/test_retraining_pipeline.py

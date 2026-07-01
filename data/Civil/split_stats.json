@@ -1,0 +1,96 @@
+{
+  "n_total": 8000,
+  "split_sizes": {
+    "train": 5600,
+    "val": 1200,
+    "test": 1200
+  },
+  "splits": {
+    "train": {
+      "n_rows": 5600,
+      "total_words": 290300,
+      "bucket_distribution": {
+        "neutral": 3164,
+        "insult": 1456,
+        "threat": 140,
+        "profanity": 560,
+        "identity": 280
+      },
+      "label_positive_counts": {
+        "toxic": 2394,
+        "severe_toxic": 66,
+        "obscene": 589,
+        "threat": 147,
+        "insult": 1265,
+        "identity_hate": 280
+      },
+      "label_positive_rates_pct": {
+        "toxic": 42.75,
+        "severe_toxic": 1.18,
+        "obscene": 10.52,
+        "threat": 2.62,
+        "insult": 22.59,
+        "identity_hate": 5.0
+      }
+    },
+    "val": {
+      "n_rows": 1200,
+      "total_words": 61920,
+      "bucket_distribution": {
+        "neutral": 678,
+        "insult": 312,
+        "identity": 60,
+        "profanity": 120,
+        "threat": 30
+      },
+      "label_positive_counts": {
+        "toxic": 513,
+        "severe_toxic": 13,
+        "obscene": 126,
+        "threat": 31,
+        "insult": 270,
+        "identity_hate": 60
+      },
+      "label_positive_rates_pct": {
+        "toxic": 42.75,
+        "severe_toxic": 1.08,
+        "obscene": 10.5,
+        "threat": 2.58,
+        "insult": 22.5,
+        "identity_hate": 5.0
+      }
+    },
+    "test": {
+      "n_rows": 1200,
+      "total_words": 65796,
+      "bucket_distribution": {
+        "insult": 312,
+        "neutral": 678,
+        "profanity": 120,
+        "threat": 30,
+        "identity": 60
+      },
+      "label_positive_counts": {
+        "toxic": 514,
+        "severe_toxic": 14,
+        "obscene": 127,
+        "threat": 31,
+        "insult": 271,
+        "identity_hate": 60
+      },
+      "label_positive_rates_pct": {
+        "toxic": 42.83,
+        "severe_toxic": 1.17,
+        "obscene": 10.58,
+        "threat": 2.58,
+        "insult": 22.58,
+        "identity_hate": 5.0
+      }
+    }
+  },
+  "text_overlap_between_splits": {
+    "train_val": 0,
+    "train_test": 0,
+    "val_test": 0
+  }
+}

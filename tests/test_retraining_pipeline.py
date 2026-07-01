@@ -24,6 +24,7 @@ class RetrainingPipelineTests(unittest.TestCase):
                 self.assertEqual(config["labels"], LABELS)
                 self.assertEqual(config["max_length"], 256)
                 self.assertIn("release_gate", config)
+                self.assertEqual(config["release_gate"]["baseline_model_dir"], "artifacts/distilbert_repro")
                 self.assertGreaterEqual(config["release_gate"]["min_macro_f1"], 0.741)
 
         export_config = json.loads(Path("configs/export_int8.json").read_text(encoding="utf-8"))
@@ -125,6 +126,46 @@ class RetrainingPipelineTests(unittest.TestCase):
         self.assertEqual(summary["model_size_mb"], 80.0)
         self.assertEqual(summary["latency_ms_by_batch"]["8"], 44.0)
 
+    def test_benchmark_summary_enforces_speed_first_gate(self):
+        from src.toxic_detector.retraining import build_benchmark_summary
+
+        summary = build_benchmark_summary(
+            model_name="student-l6-int8",
+            onnx_path="artifacts/student_minilm_l6_distilled/model_quantized.onnx",
+            model_size_bytes=55 * 1024 * 1024,
+            latency_ms_by_batch={1: 8.0, 8: 30.0, 16: 54.0},
+            baseline_latency_ms_by_batch={1: 18.0, 8: 80.0, 16: 150.0},
+            parity_max_abs_diff=0.003,
+            candidate_metrics={"macro_f1": 0.731, "per_label": {"threat": {"f1": 0.67}, "identity_hate": {"f1": 0.63}}},
+            baseline_metrics={"macro_f1": 0.726, "per_label": {"threat": {"f1": 0.67}, "identity_hate": {"f1": 0.63}}},
+            max_model_size_mb=120,
+            speed_gate={"require_batch1_speedup": True, "min_batch1_speedup": 1.25},
+            min_macro_improvement=0.0,
+        )
+
+        self.assertTrue(summary["release_gate"]["checks"]["batch1_latency_faster_than_baseline"])
+        self.assertTrue(summary["release_gate"]["checks"]["batch1_speedup_target"])
+        self.assertEqual(summary["baseline_latency_ms_by_batch"]["1"], 18.0)
+        self.assertGreaterEqual(summary["speedup_by_batch"]["1"], 2.0)
+        self.assertTrue(summary["release_gate"]["passed"])
+
+        failing = build_benchmark_summary(
+            model_name="student-too-slow",
+            onnx_path="artifacts/student_tinybert_distilled/model_quantized.onnx",
+            model_size_bytes=45 * 1024 * 1024,
+            latency_ms_by_batch={1: 20.0, 8: 50.0},
+            baseline_latency_ms_by_batch={1: 18.0, 8: 80.0},
+            parity_max_abs_diff=0.003,
+            candidate_metrics={"macro_f1": 0.731, "per_label": {"threat": {"f1": 0.67}, "identity_hate": {"f1": 0.63}}},
+            baseline_metrics={"macro_f1": 0.726, "per_label": {"threat": {"f1": 0.67}, "identity_hate": {"f1": 0.63}}},
+            max_model_size_mb=120,
+            speed_gate={"require_batch1_speedup": True, "min_batch1_speedup": 1.25},
+            min_macro_improvement=0.0,
+        )
+
+        self.assertFalse(failing["release_gate"]["passed"])
+        self.assertIn("batch1_latency_faster_than_baseline", failing["release_gate"]["failed_checks"])
+
     def test_retraining_commands_are_documented(self):
         script = Path("scripts/train_high_performance.ps1").read_text(encoding="utf-8")
         guide = Path("docs/retraining_guide.md").read_text(encoding="utf-8")
@@ -136,6 +177,23 @@ class RetrainingPipelineTests(unittest.TestCase):
         self.assertIn("ModernBERT", guide)
         self.assertIn("MiniLM", guide)
         self.assertIn("release gate", guide.lower())
+
+    def test_speed_first_student_configs_define_lightweight_candidates(self):
+        l6_config = json.loads(Path("configs/student_minilm_l6_distill.json").read_text(encoding="utf-8"))
+        tiny_config = json.loads(Path("configs/student_tinybert_distill.json").read_text(encoding="utf-8"))
+        export_config = json.loads(Path("configs/export_int8.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(l6_config["model_name"], "nreimers/MiniLM-L6-H384-uncased")
+        self.assertEqual(tiny_config["model_name"], "huawei-noah/TinyBERT_General_4L_312D")
+        self.assertIn(128, l6_config["max_length_ab"])
+        self.assertIn(192, l6_config["max_length_ab"])
+        self.assertEqual(l6_config["release_gate"]["baseline_model_dir"], "artifacts/distilbert_repro")
+        self.assertLessEqual(l6_config["release_gate"]["max_model_size_mb"], 120)
+        self.assertNotEqual(export_config["output_dir"], "extension/model")
+        self.assertIn("artifacts/extension_candidates", export_config["output_dir"])
+        self.assertEqual(export_config["baseline_model_dir"], "artifacts/distilbert_repro")
+        self.assertEqual(export_config["speed_gate"]["baseline_onnx_path"], "extension/model/model.onnx")
+        self.assertTrue(export_config["speed_gate"]["require_batch1_speedup"])
 
     def test_export_refuses_failed_release_gate_when_required(self):
         from scripts.export_extension_model import ensure_release_gate_allows_export
@@ -164,6 +222,16 @@ class RetrainingPipelineTests(unittest.TestCase):
         self.assertIn("artifacts\\distilbert_repro", script)
         self.assertIn("scripts\\export_extension_model.py", script)
         self.assertIn("--model-dir artifacts\\distilbert_repro", script)
+
+    def test_stable_combined_tensorboard_script_builds_corpus_and_logs_training(self):
+        script = Path("scripts/train_stable_combined_tensorboard.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("scripts\\prepare_combined_corpus.py", script)
+        self.assertIn("--tensorboard-logdir", script)
+        self.assertIn("tensorboard.main", script)
+        self.assertIn("distilbert-base-uncased", script)
+        self.assertIn("--loss\", \"asl", script)
+
     def test_best_teacher_selection_prefers_highest_macro_f1(self):
         from scripts.select_best_teacher import select_best_teacher
 
