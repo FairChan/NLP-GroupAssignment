@@ -1,0 +1,60 @@
+{
+  "macro_f1": 0.7284705736196734,
+  "micro_f1": 0.8095771492579109,
+  "hamming_loss": 0.014204842180025485,
+  "mean_roc_auc": 0.9933726040881785,
+  "per_label": {
+    "toxic": {
+      "precision": 0.8853727144866386,
+      "recall": 0.8234139960758666,
+      "f1": 0.8532700779396815,
+      "support": 1529,
+      "roc_auc": 0.9892433332614096,
+      "threshold": 0.76
+    },
+    "severe_toxic": {
+      "precision": 0.43309859154929575,
+      "recall": 0.76875,
+      "f1": 0.5540540540540541,
+      "support": 160,
+      "roc_auc": 0.9918323099322657,
+      "threshold": 0.57
+    },
+    "obscene": {
+      "precision": 0.8342728297632469,
+      "recall": 0.8757396449704142,
+      "f1": 0.8545034642032333,
+      "support": 845,
+      "roc_auc": 0.9956459226728398,
+      "threshold": 0.66
+    },
+    "threat": {
+      "precision": 0.6956521739130435,
+      "recall": 0.6666666666666666,
+      "f1": 0.6808510638297872,
+      "support": 48,
+      "roc_auc": 0.9987218974584617,
+      "threshold": 0.69
+    },
+    "insult": {
+      "precision": 0.7729468599033816,
+      "recall": 0.8121827411167513,
+      "f1": 0.7920792079207921,
+      "support": 788,
+      "roc_auc": 0.9913745071182779,
+      "threshold": 0.68
+    },
+    "identity_hate": {
+      "precision": 0.5914634146341463,
+      "recall": 0.6879432624113475,
+      "f1": 0.6360655737704918,
+      "support": 141,
+      "roc_auc": 0.9934176540858167,
+      "threshold": 0.58
+    }
+  },
+  "train_loss": 0.009086648365453186,
+  "epoch": 3,
+  "source_artifact": "artifacts/distilbert_repro/metrics.json",
+  "note": "Committed report copy. Generated training artifacts remain ignored under artifacts/."
+}

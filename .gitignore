@@ -11,3 +11,6 @@ data/raw/*
 artifacts/*
 !artifacts/.gitkeep
 logs/
+dist/
+*.crx
+*.pem
