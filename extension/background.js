@@ -18,6 +18,7 @@ const OFFSCREEN_MESSAGE_RETRY_DELAY_MS = 125;
 const CONTENT_SCRIPT_FILES = ["supported_sites.js", "site_adapters.js", "content.js"];
 const CONTENT_CSS_FILES = ["styles.css"];
 const BG_IS_SUPPORTED_URL = BG_SUPPORTED_SITES.isSupportedUrl || (() => false);
+const PRELOAD_DELAY_MS = 5000;
 
 let offscreenCreatePromise = null;
 let modelState = {
@@ -28,6 +29,8 @@ let modelState = {
 };
 let runtimeProgress = BG_MAKE_INITIAL_PROGRESS();
 const tabStats = new Map();
+const preloadTimers = new Map();
+let siteSettingsCache = {};
 
 function normalizeHostname(hostname) {
   return String(hostname || "").toLowerCase().replace(/^www\./, "");
@@ -39,7 +42,13 @@ function isSupportedContentUrl(url) {
 
 async function getSiteSettings() {
   const stored = await chrome.storage.local.get(TARGET_HOST_KEY);
-  return stored[TARGET_HOST_KEY] || {};
+  siteSettingsCache = stored[TARGET_HOST_KEY] || {};
+  return siteSettingsCache;
+}
+
+function getCachedSiteEnabled(hostname) {
+  const key = normalizeHostname(hostname);
+  return siteSettingsCache[key] !== false;
 }
 
 async function isSiteEnabled(hostname) {
@@ -51,6 +60,7 @@ async function isSiteEnabled(hostname) {
 async function setSiteEnabled(hostname, enabled) {
   const settings = await getSiteSettings();
   settings[normalizeHostname(hostname)] = Boolean(enabled);
+  siteSettingsCache = settings;
   await chrome.storage.local.set({ [TARGET_HOST_KEY]: settings });
 }
 
@@ -281,17 +291,68 @@ async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE, tabId = null)
   return response.results || [];
 }
 
+async function preloadModelForSupportedTab(tabId, url) {
+  if (!tabId || !isSupportedContentUrl(url)) return;
+  if (modelState.status === "ready" || modelState.status === "loading") return;
+  const hostname = new URL(url).hostname;
+  if (!(await isSiteEnabled(hostname))) return;
+  updateRuntimeProgress({
+    phase: "preloading",
+    message: "Starting idle preload of the offline model.",
+    current: 0,
+    total: 1,
+    tabId,
+  });
+  await ensureOffscreenDocument();
+  const response = await sendOffscreenMessageWithRetry({
+    type: "toxicShield:preloadModel",
+    tabId,
+  });
+  mergeModelState(response.model);
+  updateRuntimeProgress({
+    phase: "idle",
+    message: "Idle preload complete.",
+    current: 1,
+    total: 1,
+    tabId,
+  });
+}
+
+function clearScheduledPreload(tabId) {
+  const timer = preloadTimers.get(tabId);
+  if (!timer) return;
+  clearTimeout(timer);
+  preloadTimers.delete(tabId);
+}
+
+function scheduleIdlePreload(tabId, url) {
+  if (!tabId || !isSupportedContentUrl(url)) return;
+  if (modelState.status === "ready" || modelState.status === "loading") return;
+  clearScheduledPreload(tabId);
+  const timer = setTimeout(() => {
+    preloadTimers.delete(tabId);
+    preloadModelForSupportedTab(tabId, url).catch((error) => {
+      console.debug("Toxic Shield idle preload skipped:", error?.message || String(error));
+    });
+  }, PRELOAD_DELAY_MS);
+  preloadTimers.set(tabId, timer);
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(TARGET_HOST_KEY).then((stored) => {
     if (!stored[TARGET_HOST_KEY]) {
       chrome.storage.local.set({ [TARGET_HOST_KEY]: {} });
+      siteSettingsCache = {};
+      return;
     }
+    siteSettingsCache = stored[TARGET_HOST_KEY] || {};
   });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "toxicShield:getOffscreenStatus") return false;
   if (message.type === "toxicShield:offscreenPredict") return false;
+  if (message.type === "toxicShield:preloadModel") return false;
 
   (async () => {
     const tabId = message.tabId || sender.tab?.id;
@@ -311,7 +372,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "toxicShield:getQuickStatus") {
-      const enabled = hostname ? await isSiteEnabled(hostname) : true;
+      const enabled = hostname ? getCachedSiteEnabled(hostname) : true;
       sendResponse({ ...getStatusPayload(tabId, hostname), site_enabled: enabled });
       return;
     }
@@ -406,6 +467,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  clearScheduledPreload(tabId);
   tabStats.delete(tabId);
 });
 
@@ -414,6 +476,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   injectSupportedTabIfNeeded(tabId, tab?.url || "").catch((error) => {
     console.debug("Toxic Shield tab update injection skipped:", error?.message || String(error));
   });
+  scheduleIdlePreload(tabId, tab?.url || "");
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
@@ -423,6 +486,7 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
     injectSupportedTabIfNeeded(activeInfo.tabId, tab?.url || "").catch((innerError) => {
       console.debug("Toxic Shield tab activation injection skipped:", innerError?.message || String(innerError));
     });
+    scheduleIdlePreload(activeInfo.tabId, tab?.url || "");
   });
 });
 

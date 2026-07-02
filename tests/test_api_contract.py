@@ -1,10 +1,18 @@
 import unittest
 
+from fastapi import FastAPI
+
+import api
+import model_service.app
 from model_service.schemas import PredictRequest, PredictionResult
 from src.toxic_detector.config import LABELS
 
 
 class ApiContractTests(unittest.TestCase):
+    def test_root_api_module_exports_fastapi_app_alias(self):
+        self.assertIs(api.app, model_service.app.app)
+        self.assertIsInstance(api.app, FastAPI)
+
     def test_predict_request_requires_non_empty_texts(self):
         with self.assertRaises(ValueError):
             PredictRequest(texts=[])

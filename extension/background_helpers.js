@@ -48,6 +48,10 @@ function makeInitialStats() {
     lastProcessedCount: 0,
     lastBlockedCount: 0,
     lastMarkedCount: 0,
+    lastPendingCount: 0,
+    lastCacheHitCount: 0,
+    lastCacheMissCount: 0,
+    lastFastAllowCount: 0,
     lastAdapterId: null,
   };
 }
@@ -94,6 +98,10 @@ function updateStatsWithScanReport(stats, report) {
   stats.lastProcessedCount = Number(report?.processed_count ?? report?.processedCount ?? stats.lastProcessedCount ?? 0);
   stats.lastBlockedCount = Number(report?.blocked_count ?? report?.blockedCount ?? stats.lastBlockedCount ?? 0);
   stats.lastMarkedCount = Number(report?.marked_count ?? report?.markedCount ?? stats.lastMarkedCount ?? 0);
+  stats.lastPendingCount = Number(report?.pending_count ?? report?.pendingCount ?? stats.lastPendingCount ?? 0);
+  stats.lastCacheHitCount = Number(report?.cache_hit_count ?? report?.cacheHitCount ?? stats.lastCacheHitCount ?? 0);
+  stats.lastCacheMissCount = Number(report?.cache_miss_count ?? report?.cacheMissCount ?? stats.lastCacheMissCount ?? 0);
+  stats.lastFastAllowCount = Number(report?.fast_allow_count ?? report?.fastAllowCount ?? stats.lastFastAllowCount ?? 0);
   stats.lastAdapterId = report?.adapter_id || report?.adapterId || stats.lastAdapterId || null;
   return stats;
 }

@@ -56,6 +56,20 @@ test("offscreen inference reports model and batch progress without raw texts", (
   assert.ok(!source.includes("progress: { texts"), "progress messages must not include raw comment text arrays");
 });
 
+test("offscreen inference records timing and prefers WebGPU before WASM fallback", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "offscreen_inference.js"), "utf8");
+
+  assert.match(source, /"webgpu"/);
+  assert.match(source, /"wasm"/);
+  assert.ok(source.indexOf('"webgpu"') < source.indexOf('"wasm"'), "WebGPU should be attempted before WASM");
+  assert.match(source, /performance\.now/);
+  assert.match(source, /tokenizeMs/);
+  assert.match(source, /inferenceMs/);
+  assert.match(source, /formatMs/);
+  assert.match(source, /totalMs/);
+  assert.match(source, /lastTiming/);
+});
+
 test("offscreen inference scripts share a document scope without duplicate bindings", () => {
   parseCombinedSources(
     "vendor/onnxruntime-web/ort.min.js",

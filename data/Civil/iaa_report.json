@@ -1,0 +1,60 @@
+{
+  "method": "Threshold-sensitivity audit of aggregate human crowd-worker scores",
+  "n_audit_sample": 800,
+  "primary_thresholds": {
+    "severe_toxic": 0.3,
+    "all_other_labels": 0.5
+  },
+  "comparison_thresholds": {
+    "severe_toxic": 0.5,
+    "all_other_labels": 0.7
+  },
+  "cohen_kappa_inter_annotator": null,
+  "why_inter_annotator_kappa_is_not_computed": "The public mirror provides aggregate vote fractions, not individual rater decisions. Computing human-human Cohen's kappa from aggregate scores would be invalid.",
+  "per_label": {
+    "toxic": {
+      "positive_at_0_5": 342,
+      "positive_at_0_7": 113,
+      "disagreements_between_thresholds": 229,
+      "threshold_stability_kappa": 0.361,
+      "mean_crowd_score": 0.311063
+    },
+    "severe_toxic": {
+      "positive_at_0_5": 10,
+      "positive_at_0_7": 0,
+      "disagreements_between_thresholds": 10,
+      "threshold_stability_kappa": 0.0,
+      "mean_crowd_score": 0.020704
+    },
+    "obscene": {
+      "positive_at_0_5": 85,
+      "positive_at_0_7": 24,
+      "disagreements_between_thresholds": 61,
+      "threshold_stability_kappa": 0.4129,
+      "mean_crowd_score": 0.097337
+    },
+    "threat": {
+      "positive_at_0_5": 20,
+      "positive_at_0_7": 2,
+      "disagreements_between_thresholds": 18,
+      "threshold_stability_kappa": 0.1781,
+      "mean_crowd_score": 0.032234
+    },
+    "insult": {
+      "positive_at_0_5": 181,
+      "positive_at_0_7": 61,
+      "disagreements_between_thresholds": 120,
+      "threshold_stability_kappa": 0.4403,
+      "mean_crowd_score": 0.2258
+    },
+    "identity_hate": {
+      "positive_at_0_5": 39,
+      "positive_at_0_7": 3,
+      "disagreements_between_thresholds": 36,
+      "threshold_stability_kappa": 0.1368,
+      "mean_crowd_score": 0.066101
+    }
+  },
+  "macro_threshold_stability_kappa": 0.2549,
+  "note": "Threshold stability is a sensitivity analysis, not inter-annotator agreement."
+}

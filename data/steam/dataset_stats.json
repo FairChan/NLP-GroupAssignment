@@ -1,0 +1,9 @@
+{
+    "total_samples": 6991,
+    "toxic": 1239,
+    "severe_toxic": 126,
+    "obscene": 346,
+    "threat": 105,
+    "insult": 573,
+    "identity_hate": 373
+}

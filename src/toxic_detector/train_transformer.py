@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -18,13 +19,19 @@ from transformers import (
 
 from src.toxic_detector.config import DEFAULT_MODEL_NAME, LABELS
 from src.toxic_detector.data import load_jigsaw_train, multilabel_train_valid_split
-from src.toxic_detector.losses import AsymmetricLoss
+from src.toxic_detector.losses import AsymmetricLoss, AsymmetricPolynomialLoss
 from src.toxic_detector.metrics import (
     compute_multilabel_metrics,
     find_best_thresholds,
     save_json,
 )
+from src.toxic_detector.supplemental_data import append_optional_supplemental_data
 from src.toxic_detector.tokenization import encode_head_tail
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:  # pragma: no cover - exercised only in environments without tensorboard
+    SummaryWriter = None
 
 
 class ToxicCommentDataset(Dataset):
@@ -61,6 +68,14 @@ def build_loss(args: argparse.Namespace, y_train: np.ndarray, device: torch.devi
             gamma_neg=args.gamma_neg,
             clip=args.asl_clip,
         )
+    if args.loss == "apl":
+        return AsymmetricPolynomialLoss(
+            gamma_pos=args.gamma_pos,
+            gamma_neg=args.gamma_neg,
+            clip=args.asl_clip,
+            epsilon_pos=args.apl_epsilon_pos,
+            epsilon_neg=args.apl_epsilon_neg,
+        )
 
     positives = np.clip(y_train.sum(axis=0), a_min=1.0, a_max=None)
     negatives = y_train.shape[0] - positives
@@ -78,7 +93,9 @@ def run_epoch(
     scaler,
     fp16: bool,
     gradient_accumulation_steps: int,
-) -> float:
+    writer=None,
+    global_step: int = 0,
+) -> tuple[float, int]:
     model.train()
     total_loss = 0.0
     optimizer.zero_grad(set_to_none=True)
@@ -100,9 +117,13 @@ def run_epoch(
             scaler.update()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
+            global_step += 1
+            if writer is not None:
+                writer.add_scalar("train/step_loss", float(loss.item() * gradient_accumulation_steps), global_step)
+                writer.add_scalar("train/learning_rate", float(scheduler.get_last_lr()[0]), global_step)
 
         total_loss += loss.item() * gradient_accumulation_steps
-    return total_loss / max(len(dataloader), 1)
+    return total_loss / max(len(dataloader), 1), global_step
 
 
 @torch.no_grad()
@@ -122,119 +143,189 @@ def predict_probabilities(model, dataloader, device) -> tuple[np.ndarray, np.nda
     return labels, probabilities
 
 
+def resolve_model_checkpoint(model_name: str, init_model_dir: str | None) -> str:
+    return init_model_dir or model_name
+
+
+def create_tensorboard_writer(logdir: str | None, output_dir: Path):
+    if not logdir:
+        return None
+    if SummaryWriter is None:
+        raise RuntimeError("TensorBoard is not installed. Install tensorboard or omit --tensorboard-logdir.")
+    resolved = Path(logdir)
+    if str(resolved).strip() == "auto":
+        resolved = output_dir / "tensorboard"
+    resolved.mkdir(parents=True, exist_ok=True)
+    return SummaryWriter(log_dir=str(resolved))
+
+
+def write_tensorboard_epoch_metrics(
+    writer,
+    epoch: int,
+    train_loss: float,
+    learning_rate: float,
+    metrics: dict[str, Any],
+) -> None:
+    if writer is None:
+        return
+    writer.add_scalar("train/loss", float(train_loss), epoch)
+    writer.add_scalar("train/learning_rate_epoch", float(learning_rate), epoch)
+    for metric_name in ("macro_f1", "micro_f1", "hamming_loss", "mean_roc_auc"):
+        value = metrics.get(metric_name)
+        if value is not None:
+            writer.add_scalar(f"eval/{metric_name}", float(value), epoch)
+
+    for label, values in metrics.get("per_label", {}).items():
+        for metric_name in ("precision", "recall", "f1", "roc_auc"):
+            value = values.get(metric_name)
+            if value is not None:
+                writer.add_scalar(f"eval/{label}_{metric_name}", float(value), epoch)
+        threshold = values.get("threshold")
+        if threshold is not None:
+            writer.add_scalar(f"threshold/{label}", float(threshold), epoch)
+
+
 def train_transformer(args: argparse.Namespace) -> dict:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    tensorboard_logdir = getattr(args, "tensorboard_logdir", None)
+    writer = create_tensorboard_writer(tensorboard_logdir, output_dir)
 
-    frame = load_jigsaw_train(args.data_path)
-    train_frame, valid_frame = multilabel_train_valid_split(
-        frame,
-        valid_size=args.valid_size,
-        random_state=args.seed,
-    )
+    try:
+        frame = load_jigsaw_train(args.data_path)
+        frame = append_optional_supplemental_data(frame, getattr(args, "supplemental_data", None))
+        train_frame, valid_frame = multilabel_train_valid_split(
+            frame,
+            valid_size=args.valid_size,
+            random_state=args.seed,
+        )
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    train_dataset = ToxicCommentDataset(
-        train_frame["comment_text"],
-        train_frame[LABELS].to_numpy(),
-        tokenizer,
-        max_length=args.max_length,
-        head_tokens=args.head_tokens,
-        tail_tokens=args.tail_tokens,
-    )
-    valid_dataset = ToxicCommentDataset(
-        valid_frame["comment_text"],
-        valid_frame[LABELS].to_numpy(),
-        tokenizer,
-        max_length=args.max_length,
-        head_tokens=args.head_tokens,
-        tail_tokens=args.tail_tokens,
-    )
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
-    valid_loader = DataLoader(
-        valid_dataset,
-        batch_size=args.eval_batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
-    )
+        init_model_dir = getattr(args, "init_model_dir", None)
+        tokenizer_name = getattr(args, "tokenizer_name", None)
+        model_checkpoint = resolve_model_checkpoint(args.model_name, init_model_dir)
+        tokenizer_checkpoint = tokenizer_name or model_checkpoint
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+        train_dataset = ToxicCommentDataset(
+            train_frame["comment_text"],
+            train_frame[LABELS].to_numpy(),
+            tokenizer,
+            max_length=args.max_length,
+            head_tokens=args.head_tokens,
+            tail_tokens=args.tail_tokens,
+        )
+        valid_dataset = ToxicCommentDataset(
+            valid_frame["comment_text"],
+            valid_frame[LABELS].to_numpy(),
+            tokenizer,
+            max_length=args.max_length,
+            head_tokens=args.head_tokens,
+            tail_tokens=args.tail_tokens,
+        )
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
+        valid_loader = DataLoader(
+            valid_dataset,
+            batch_size=args.eval_batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
 
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
-    fp16 = args.fp16 and device.type == "cuda"
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+        device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
+        fp16 = args.fp16 and device.type == "cuda"
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
 
-    model = AutoModelForSequenceClassification.from_pretrained(
-        args.model_name,
-        num_labels=len(LABELS),
-        problem_type="multi_label_classification",
-    ).to(device)
-    loss_fn = build_loss(args, train_frame[LABELS].to_numpy(), device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_checkpoint,
+            num_labels=len(LABELS),
+            problem_type="multi_label_classification",
+        ).to(device)
+        loss_fn = build_loss(args, train_frame[LABELS].to_numpy(), device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
-    total_steps = max(update_steps_per_epoch * args.epochs, 1)
-    warmup_steps = int(total_steps * args.warmup_ratio)
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=warmup_steps,
-        num_training_steps=total_steps,
-    )
-    scaler = torch.cuda.amp.GradScaler(enabled=fp16)
-
-    best_macro_f1 = -1.0
-    best_payload = {}
-    for epoch in range(1, args.epochs + 1):
-        train_loss = run_epoch(
-            model,
-            train_loader,
+        update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
+        total_steps = max(update_steps_per_epoch * args.epochs, 1)
+        warmup_steps = int(total_steps * args.warmup_ratio)
+        scheduler = get_linear_schedule_with_warmup(
             optimizer,
-            scheduler,
-            loss_fn,
-            device,
-            scaler,
-            fp16,
-            args.gradient_accumulation_steps,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_steps,
         )
-        y_valid, probabilities = predict_probabilities(model, valid_loader, device)
-        thresholds = find_best_thresholds(y_valid, probabilities)
-        metrics = compute_multilabel_metrics(y_valid, probabilities, thresholds)
-        metrics["train_loss"] = float(train_loss)
-        metrics["epoch"] = epoch
-        print(
-            f"epoch={epoch} loss={train_loss:.4f} "
-            f"macro_f1={metrics['macro_f1']:.4f} micro_f1={metrics['micro_f1']:.4f}"
+        scaler = torch.cuda.amp.GradScaler(enabled=fp16)
+
+        best_macro_f1 = -1.0
+        best_payload = {}
+        global_step = 0
+        for epoch in range(1, args.epochs + 1):
+            train_loss, global_step = run_epoch(
+                model,
+                train_loader,
+                optimizer,
+                scheduler,
+                loss_fn,
+                device,
+                scaler,
+                fp16,
+                args.gradient_accumulation_steps,
+                writer=writer,
+                global_step=global_step,
+            )
+            y_valid, probabilities = predict_probabilities(model, valid_loader, device)
+            thresholds = find_best_thresholds(y_valid, probabilities)
+            metrics = compute_multilabel_metrics(y_valid, probabilities, thresholds)
+            metrics["train_loss"] = float(train_loss)
+            metrics["epoch"] = epoch
+            current_lr = scheduler.get_last_lr()[0]
+            write_tensorboard_epoch_metrics(writer, epoch, train_loss, current_lr, metrics)
+            print(
+                f"epoch={epoch} loss={train_loss:.4f} "
+                f"macro_f1={metrics['macro_f1']:.4f} micro_f1={metrics['micro_f1']:.4f}"
+            )
+
+            if metrics["macro_f1"] > best_macro_f1:
+                best_macro_f1 = metrics["macro_f1"]
+                best_payload = {"metrics": metrics, "thresholds": thresholds}
+                model.save_pretrained(output_dir)
+                tokenizer.save_pretrained(output_dir)
+                save_json(output_dir / "thresholds.json", thresholds)
+                save_json(output_dir / "metrics.json", metrics)
+
+        save_json(
+            output_dir / "training_config.json",
+            {
+                "model_name": args.model_name,
+                "init_model_dir": init_model_dir,
+                "tokenizer_name": tokenizer_name,
+                "model_checkpoint": model_checkpoint,
+                "labels": LABELS,
+                "max_length": args.max_length,
+                "head_tokens": args.head_tokens,
+                "tail_tokens": args.tail_tokens,
+                "loss": args.loss,
+                "gamma_pos": args.gamma_pos,
+                "gamma_neg": args.gamma_neg,
+                "asl_clip": args.asl_clip,
+                "apl_epsilon_pos": getattr(args, "apl_epsilon_pos", None),
+                "apl_epsilon_neg": getattr(args, "apl_epsilon_neg", None),
+                "epochs": args.epochs,
+                "batch_size": args.batch_size,
+                "gradient_accumulation_steps": args.gradient_accumulation_steps,
+                "tensorboard_logdir": tensorboard_logdir,
+                "train_rows": int(len(train_frame)),
+                "valid_rows": int(len(valid_frame)),
+            },
         )
-
-        if metrics["macro_f1"] > best_macro_f1:
-            best_macro_f1 = metrics["macro_f1"]
-            best_payload = {"metrics": metrics, "thresholds": thresholds}
-            model.save_pretrained(output_dir)
-            tokenizer.save_pretrained(output_dir)
-            save_json(output_dir / "thresholds.json", thresholds)
-            save_json(output_dir / "metrics.json", metrics)
-
-    save_json(
-        output_dir / "training_config.json",
-        {
-            "model_name": args.model_name,
-            "labels": LABELS,
-            "max_length": args.max_length,
-            "head_tokens": args.head_tokens,
-            "tail_tokens": args.tail_tokens,
-            "loss": args.loss,
-            "epochs": args.epochs,
-            "batch_size": args.batch_size,
-            "gradient_accumulation_steps": args.gradient_accumulation_steps,
-        },
-    )
-    return best_payload
+        return best_payload
+    finally:
+        if writer is not None:
+            writer.flush()
+            writer.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -242,6 +333,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", default="data/raw/train.csv")
     parser.add_argument("--output-dir", default="artifacts/distilbert")
     parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
+    parser.add_argument("--init-model-dir", default=None, help="Optional local model directory to continue training from.")
+    parser.add_argument("--tokenizer-name", default=None, help="Optional tokenizer name or path. Defaults to init model or model name.")
     parser.add_argument("--valid-size", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-length", type=int, default=256)
@@ -254,12 +347,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.06)
-    parser.add_argument("--loss", choices=["asl", "bce"], default="asl")
+    parser.add_argument("--loss", choices=["asl", "bce", "apl"], default="asl")
     parser.add_argument("--gamma-pos", type=float, default=0.0)
     parser.add_argument("--gamma-neg", type=float, default=4.0)
     parser.add_argument("--asl-clip", type=float, default=0.05)
+    parser.add_argument("--apl-epsilon-pos", type=float, default=1.0)
+    parser.add_argument("--apl-epsilon-neg", type=float, default=1.0)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--tensorboard-logdir",
+        default=None,
+        help="Optional TensorBoard log directory. Use 'auto' to write under the output directory.",
+    )
     parser.add_argument("--cpu", action="store_true")
     return parser.parse_args()
 

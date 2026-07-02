@@ -10,6 +10,7 @@ const DEFAULT_BATCH_SIZE = 8;
 const OFFSCREEN_MESSAGE_TYPES = new Set([
   "toxicShield:getOffscreenStatus",
   "toxicShield:offscreenPredict",
+  "toxicShield:preloadModel",
 ]);
 
 let session = null;
@@ -22,6 +23,7 @@ let modelState = {
   backend: null,
   error: null,
   loadedAt: null,
+  lastTiming: null,
 };
 
 function sendProgress(progress) {
@@ -36,6 +38,7 @@ function sendProgress(progress) {
     if (progress?.currentBatch !== undefined) progressPayload.currentBatch = progress.currentBatch;
     if (progress?.totalBatches !== undefined) progressPayload.totalBatches = progress.totalBatches;
     if (progress?.textCount !== undefined) progressPayload.textCount = progress.textCount;
+    if (progress?.timing !== undefined) progressPayload.timing = progress.timing;
     chrome.runtime.sendMessage(
       {
         type: "toxicShield:offscreenProgress",
@@ -53,6 +56,10 @@ function sendProgress(progress) {
 
 function runtimeUrl(path) {
   return chrome.runtime.getURL(path);
+}
+
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 async function fetchJson(path) {
@@ -96,7 +103,7 @@ function configureOrt() {
 
 async function createSession(modelBytes) {
   let lastError = null;
-  for (const provider of ["wasm"]) {
+  for (const provider of ["webgpu", "wasm"]) {
     try {
       const created = await ort.InferenceSession.create(modelBytes, {
         executionProviders: [provider],
@@ -207,6 +214,7 @@ function flattenBigInt(rows, field) {
 }
 
 async function runBatch(texts, batchProgress) {
+  const totalStarted = nowMs();
   sendProgress({
     phase: "tokenizing",
     message: `Tokenizing batch ${batchProgress.currentBatch}/${batchProgress.totalBatches}.`,
@@ -217,7 +225,9 @@ async function runBatch(texts, batchProgress) {
     textCount: texts.length,
     tabId: batchProgress.tabId,
   });
+  const tokenizeStarted = nowMs();
   const encodedRows = tokenizer.encodeBatch(texts);
+  const tokenizeMs = nowMs() - tokenizeStarted;
   const maxLength = getMaxLength();
   const feeds = {
     input_ids: new ort.Tensor("int64", flattenBigInt(encodedRows, "inputIds"), [texts.length, maxLength]),
@@ -235,8 +245,12 @@ async function runBatch(texts, batchProgress) {
     totalBatches: batchProgress.totalBatches,
     textCount: texts.length,
     tabId: batchProgress.tabId,
+    timing: { tokenizeMs: Number(tokenizeMs.toFixed(3)) },
   });
+  const inferenceStarted = nowMs();
   const outputs = await session.run(feeds);
+  const inferenceMs = nowMs() - inferenceStarted;
+  const formatStarted = nowMs();
   const logitsTensor = outputs.logits || outputs[session.outputNames?.[0]];
   const logits = Array.from(logitsTensor.data);
   const labelCount = OFFSCREEN_SHARED.LABELS.length;
@@ -244,6 +258,16 @@ async function runBatch(texts, batchProgress) {
   for (let offset = 0; offset < logits.length; offset += labelCount) {
     rows.push(logits.slice(offset, offset + labelCount));
   }
+  const formattedResults = OFFSCREEN_FORMAT_PREDICTION_RESULTS(rows, thresholds);
+  const formatMs = nowMs() - formatStarted;
+  const totalMs = nowMs() - totalStarted;
+  const timing = {
+    tokenizeMs: Number(tokenizeMs.toFixed(3)),
+    inferenceMs: Number(inferenceMs.toFixed(3)),
+    formatMs: Number(formatMs.toFixed(3)),
+    totalMs: Number(totalMs.toFixed(3)),
+  };
+  modelState.lastTiming = timing;
   sendProgress({
     phase: "formatting_results",
     message: `Formatting results for batch ${batchProgress.currentBatch}/${batchProgress.totalBatches}.`,
@@ -253,8 +277,9 @@ async function runBatch(texts, batchProgress) {
     totalBatches: batchProgress.totalBatches,
     textCount: texts.length,
     tabId: batchProgress.tabId,
+    timing,
   });
-  return OFFSCREEN_FORMAT_PREDICTION_RESULTS(rows, thresholds);
+  return formattedResults;
 }
 
 async function predictTexts(texts, batchSize = DEFAULT_BATCH_SIZE, tabId = null) {
@@ -277,6 +302,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   (async () => {
     if (message.type === "toxicShield:getOffscreenStatus") {
+      sendResponse({ ok: true, model: modelState });
+      return;
+    }
+
+    if (message.type === "toxicShield:preloadModel") {
+      await loadModel();
       sendResponse({ ok: true, model: modelState });
       return;
     }

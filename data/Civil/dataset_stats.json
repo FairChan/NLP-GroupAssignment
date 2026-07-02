@@ -1,0 +1,127 @@
+{
+  "n_rows": 8000,
+  "total_words": 418016,
+  "vocab_size_unique_tokens": 25160,
+  "avg_words_per_row": 52.25,
+  "median_words_per_row": 37,
+  "min_words": 3,
+  "max_words": 199,
+  "label_positive_counts": {
+    "toxic": 3421,
+    "severe_toxic": 93,
+    "obscene": 842,
+    "threat": 209,
+    "insult": 1806,
+    "identity_hate": 400
+  },
+  "label_positive_rates_pct": {
+    "toxic": 42.76,
+    "severe_toxic": 1.16,
+    "obscene": 10.53,
+    "threat": 2.61,
+    "insult": 22.57,
+    "identity_hate": 5.0
+  },
+  "rows_with_any_label": 3480,
+  "rows_clean": 4520,
+  "bucket_distribution": {
+    "insult": 2080,
+    "neutral": 4520,
+    "profanity": 800,
+    "identity": 400,
+    "threat": 200
+  },
+  "source_distribution": {
+    "civil_comments": 8000
+  },
+  "top_10_label_combinations": {
+    "(none)": 4520,
+    "toxic+insult": 1159,
+    "toxic": 800,
+    "toxic+obscene+insult": 409,
+    "toxic+obscene": 373,
+    "toxic+identity_hate": 269,
+    "toxic+threat": 169,
+    "toxic+insult+identity_hate": 113,
+    "insult": 41,
+    "toxic+severe_toxic+insult": 28
+  },
+  "top_20_most_frequent_tokens": {
+    "the": 20608,
+    "to": 11895,
+    "and": 10575,
+    "of": 9136,
+    "a": 9109,
+    "is": 6977,
+    "in": 6215,
+    "that": 5720,
+    "you": 4853,
+    "i": 4195,
+    "for": 4168,
+    "it": 4163,
+    "are": 3478,
+    "not": 3043,
+    "be": 2846,
+    "on": 2792,
+    "this": 2782,
+    "have": 2719,
+    "with": 2704,
+    "they": 2684
+  },
+  "annotation_source": "Civil Comments crowd-worker aggregate scores",
+  "label_binarization_thresholds": {
+    "toxic": 0.5,
+    "severe_toxic": 0.3,
+    "obscene": 0.5,
+    "threat": 0.5,
+    "insult": 0.5,
+    "identity_hate": 0.5
+  },
+  "total_annotation_cost_usd": 0.0,
+  "sampling": {
+    "source_parquet_rows": 902437,
+    "source_parquet_row_groups": 903,
+    "eligible_category_counts": {
+      "neutral": 807759,
+      "insult": 46091,
+      "obscene": 4621,
+      "toxic_only": 11567,
+      "identity": 6043,
+      "threat": 1935,
+      "severe": 112
+    },
+    "rejected_counts": {
+      "length_filter": 15026,
+      "duplicate_within_source": 9274,
+      "overlap_with_youtube_or_google_play": 9
+    },
+    "selected_category_counts": {
+      "insult": 1200,
+      "neutral": 4520,
+      "toxic_only": 800,
+      "obscene": 800,
+      "identity": 400,
+      "severe": 80,
+      "threat": 200
+    },
+    "unique_selected_normalized_texts": 8000
+  },
+  "non_overlap_check": {
+    "method": "NFKC + lowercase + retain alphanumeric tokens + collapse whitespace, then SHA-256 comparison",
+    "reference_row_counts": {
+      "youtube.zip": 8000,
+      "google_play(1).zip": 8000
+    },
+    "selected_unique_normalized_texts": 8000,
+    "normalized_text_overlaps_with_youtube_or_google_play": 0
+  },
+  "provenance": {
+    "dataset": "Civil Comments / Jigsaw Unintended Bias in Toxicity Classification",
+    "authoritative_catalog": "https://www.tensorflow.org/datasets/catalog/civil_comments",
+    "download_mirror": "https://huggingface.co/datasets/google/civil_comments",
+    "downloaded_file": "https://huggingface.co/datasets/google/civil_comments/resolve/refs%2Fconvert%2Fparquet/default/train/0000.parquet?download=true",
+    "download_date": "2026-06-24",
+    "license": "CC0-1.0",
+    "source_parquet_sha256": "c20f01c3aecbdd942886cacb0ee67e995df33bc712a622fde75927ed3d6ccefe"
+  }
+}

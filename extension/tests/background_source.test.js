@@ -103,3 +103,41 @@ test("background exposes quick cached status without forcing offscreen initializ
   assert.ok(getStatusIndex >= 0, "full status handler is missing");
   assert.ok(!fullStatusBlock.includes("getOffscreenStatus"), "full status must return cached state for popup speed");
 });
+
+test("background preloads the offscreen model only on supported enabled tabs", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.match(source, /preloadModelForSupportedTab/);
+  assert.match(source, /scheduleIdlePreload/);
+  assert.match(source, /PRELOAD_DELAY_MS/);
+  assert.match(source, /preloadTimers/);
+  assert.match(source, /toxicShield:preloadModel/);
+  assert.match(source, /idle preload/i);
+  assert.match(source, /isSupportedContentUrl\(url\)/);
+  assert.match(source, /isSiteEnabled\(hostname\)/);
+
+  const updatedIndex = source.indexOf("chrome.tabs.onUpdated.addListener");
+  const activatedIndex = source.indexOf("chrome.tabs.onActivated.addListener");
+  const tailIndex = source.indexOf("if (typeof BG_SHARED.LABELS");
+  const updatedBlock = source.slice(updatedIndex, activatedIndex);
+  const activatedBlock = source.slice(activatedIndex, tailIndex);
+
+  assert.match(updatedBlock, /scheduleIdlePreload/);
+  assert.match(activatedBlock, /scheduleIdlePreload/);
+  assert.ok(!updatedBlock.includes("preloadModelForSupportedTab("));
+  assert.ok(!activatedBlock.includes("preloadModelForSupportedTab("));
+});
+
+test("background quick status avoids storage and offscreen startup work", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+
+  assert.match(source, /getCachedSiteEnabled/);
+
+  const quickStatusIndex = source.indexOf('message.type === "toxicShield:getQuickStatus"');
+  const getStatusIndex = source.indexOf('message.type === "toxicShield:getStatus"');
+  const quickStatusBlock = source.slice(quickStatusIndex, getStatusIndex);
+
+  assert.match(quickStatusBlock, /getCachedSiteEnabled/);
+  assert.ok(!quickStatusBlock.includes("await isSiteEnabled"), "quick status must not wait for storage");
+  assert.ok(!quickStatusBlock.includes("ensureOffscreenDocument"), "quick status must not wake offscreen inference");
+});

@@ -1,0 +1,41 @@
+{
+  "model_dir": "artifacts/student_minilm_l6_distilled",
+  "output_dir": "artifacts/extension_candidates/student_minilm_l6_int8",
+  "baseline_model_dir": "artifacts/distilbert_repro",
+  "max_length": 192,
+  "quantize": true,
+  "quantization": "dynamic_int8",
+  "max_model_size_mb": 120,
+  "max_quantized_metric_drop": 0.005,
+  "benchmark_batches": [
+    1,
+    8,
+    16
+  ],
+  "sample_texts": [
+    "Thanks for the explanation, this is helpful.",
+    "You are stupid and I hate you.",
+    "I will hurt you if you come here again.",
+    "People from that group deserve respect and safety."
+  ],
+  "release_gate": {
+    "min_macro_f1": 0.726,
+    "min_macro_improvement": 0.0,
+    "long_tail_labels": [
+      "threat",
+      "identity_hate"
+    ]
+  },
+  "speed_gate": {
+    "baseline_onnx_path": "extension/model/model.onnx",
+    "baseline_max_length": 256,
+    "require_batch1_speedup": true,
+    "min_batch1_speedup": 1.25,
+    "max_batch1_latency_ms": 150,
+    "max_latency_ms_by_batch": {
+      "8": 800,
+      "16": 1400
+    }
+  },
+  "require_release_gate": true
+}
