@@ -1,6 +1,6 @@
-# 有害评论与网络暴力检测系统
+# Harmful Comments and Cyberbullying Detection System
 
-这是一个英文有害评论多标签检测项目，包含训练代码、本地 FastAPI 推理服务，以及 Chrome/Edge Manifest V3 离线浏览器插件。
+This is a multi-tag detection project for harmful English comments, including training code, a local FastAPI inference service, and an offline browser plugin for Chrome/Edge Manifest V3.
 
 ## Current Project Status
 
